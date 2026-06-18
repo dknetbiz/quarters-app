@@ -10,6 +10,32 @@ import { createAllotment } from '../lib/googleSheets'
 import { ALLOTMENT_TYPES } from '../lib/constants'
 import Modal from '../components/Modal'
 
+// Gradient palette cycled across quarter types
+const TYPE_GRADIENTS = [
+  'from-blue-600 to-blue-800',
+  'from-violet-600 to-violet-800',
+  'from-teal-600 to-teal-800',
+  'from-indigo-600 to-indigo-800',
+  'from-sky-600 to-sky-800',
+  'from-emerald-600 to-emerald-800',
+  'from-purple-600 to-purple-800',
+  'from-cyan-600 to-cyan-800',
+  'from-rose-600 to-rose-800',
+  'from-orange-500 to-orange-700',
+  'from-amber-500 to-amber-700',
+  'from-pink-600 to-pink-800',
+]
+
+const ORG_PALETTE = {
+  NJHPS: 'from-blue-500 to-blue-700',
+  RHPS:  'from-violet-500 to-violet-700',
+  LHEP:  'from-cyan-500 to-cyan-700',
+  CISF:  'from-rose-500 to-rose-700',
+  BSNL:  'from-orange-500 to-orange-700',
+  FA:    'from-teal-500 to-teal-700',
+  Other: 'from-slate-400 to-slate-600',
+}
+
 export default function Dashboard() {
   const {
     stats, quarters, allotments, employees, keys,
@@ -31,7 +57,17 @@ export default function Dashboard() {
   const occupancyPct     = stats.total ? Math.round(stats.occupied / stats.total * 100) : 0
   const today            = new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
 
-  // Organisation stats: dept → occupied count
+  // Per-type: occ + vac counts
+  const typeStats = useMemo(() =>
+    Object.entries(stats.byType)
+      .map(([type, total]) => {
+        const occ = quarters.filter(q => q.Type === type && q.Status === 'Occupied').length
+        return { type, total, occ, vac: total - occ }
+      })
+      .sort((a, b) => b.total - a.total)
+  , [stats.byType, quarters])
+
+  // Org stats
   const orgStats = useMemo(() => {
     const map = {}
     allotments.filter(a => a.Status === 'Active').forEach(a => {
@@ -41,11 +77,7 @@ export default function Dashboard() {
     return Object.entries(map).sort((a, b) => b[1] - a[1])
   }, [allotments, employees])
 
-  const typeEntries = useMemo(() =>
-    Object.entries(stats.byType).sort((a, b) => b[1] - a[1])
-  , [stats.byType])
-
-  // Data shown inside the type detail modal
+  // Type detail modal data
   const typeData = useMemo(() => {
     if (!typeModal) return { list: [] }
     const tq = quarters.filter(q => q.Type === typeModal.type)
@@ -57,7 +89,7 @@ export default function Dashboard() {
         .map(a => ({
           ...a,
           emp: employees.find(e => e.Emp_ID === a.Emp_ID),
-          qtr: tq.find(q => q.Quarter_ID === a.Quarter_ID)
+          qtr: tq.find(q => q.Quarter_ID === a.Quarter_ID),
         }))
     }
   }, [typeModal, quarters, allotments, employees])
@@ -74,9 +106,7 @@ export default function Dashboard() {
     try {
       await createAllotment(allotForm, auditUser)
       await Promise.all([refreshAllotments(), refreshQuarters()])
-      setAllotModal(false)
-      setAllotForm(emptyForm())
-      setTypeModal(null)
+      setAllotModal(false); setAllotForm(emptyForm()); setTypeModal(null)
     } catch (e) { alert('Error: ' + e.message) }
     finally { setSaving(false) }
   }
@@ -111,74 +141,110 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="px-4 -mt-5 space-y-4">
+      <div className="px-4 -mt-5 space-y-5">
 
-        {/* ── Stat cards + Type breakdown ───────────────────── */}
-        <div className="grid grid-cols-2 gap-3 items-start">
+        {/* ── 2×2 Summary stat cards ───────────────────────── */}
+        <div className="grid grid-cols-2 gap-2">
+          <StatCard icon={Building2}   label="Total Quarters" value={stats.total}    accent="bg-blue-500"    iconBg="bg-blue-50"    iconColor="text-blue-600"    onClick={() => navigate('/quarters')} />
+          <StatCard icon={CheckCircle} label="Occupied"       value={stats.occupied} accent="bg-emerald-500" iconBg="bg-emerald-50" iconColor="text-emerald-600" onClick={() => navigate('/quarters?status=Occupied')} />
+          <StatCard icon={XCircle}     label="Vacant"         value={stats.vacant}   accent="bg-rose-500"   iconBg="bg-rose-50"   iconColor="text-rose-600"   onClick={() => navigate('/quarters?status=Vacant')} />
+          <StatCard icon={Wrench}      label="Under Repair"   value={stats.repair}   accent="bg-amber-500"  iconBg="bg-amber-50"  iconColor="text-amber-600"  onClick={() => navigate('/quarters?status=Under Repair')} />
+        </div>
 
-          {/* 2×2 compact stat cards */}
-          <div className="grid grid-cols-2 gap-2">
-            <StatCard icon={Building2}   label="Total"    value={stats.total}    accent="bg-blue-500"    iconBg="bg-blue-50"    iconColor="text-blue-600"    onClick={() => navigate('/quarters')} />
-            <StatCard icon={CheckCircle} label="Occupied" value={stats.occupied} accent="bg-emerald-500" iconBg="bg-emerald-50" iconColor="text-emerald-600" onClick={() => navigate('/quarters?status=Occupied')} />
-            <StatCard icon={XCircle}     label="Vacant"   value={stats.vacant}   accent="bg-rose-500"   iconBg="bg-rose-50"   iconColor="text-rose-600"   onClick={() => navigate('/quarters?status=Vacant')} />
-            <StatCard icon={Wrench}      label="Repair"   value={stats.repair}   accent="bg-amber-500"  iconBg="bg-amber-50"  iconColor="text-amber-600"  onClick={() => navigate('/quarters?status=Under Repair')} />
-          </div>
-
-          {/* Type-wise panel */}
-          {typeEntries.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 space-y-2.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">By Type</p>
-              {typeEntries.map(([type, total]) => {
-                const occ = quarters.filter(q => q.Type === type && q.Status === 'Occupied').length
-                const vac = total - occ
-                const pct = total ? Math.round(occ / total * 100) : 0
+        {/* ── Quarter type cards (horizontal scroll) ───────── */}
+        {typeStats.length > 0 && (
+          <div>
+            <SectionLabel>Quarter Types</SectionLabel>
+            <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              {typeStats.map(({ type, total, occ, vac }, idx) => {
+                const pct  = total ? Math.round(occ / total * 100) : 0
+                const grad = TYPE_GRADIENTS[idx % TYPE_GRADIENTS.length]
                 return (
-                  <div key={type}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] font-semibold text-slate-700 truncate max-w-[42%]">{type}</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setTypeModal({ type, mode: 'occupied' })}
-                          className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-1.5 py-0.5 rounded hover:bg-emerald-100 active:bg-emerald-200 transition-colors"
-                          title="View occupants"
-                        >
-                          {occ} occ
-                        </button>
-                        <button
-                          onClick={() => setTypeModal({ type, mode: 'vacant' })}
-                          className="text-[10px] bg-rose-50 text-rose-600 font-bold px-1.5 py-0.5 rounded hover:bg-rose-100 active:bg-rose-200 transition-colors"
-                          title="View / allot vacant"
-                        >
-                          {vac} vac
-                        </button>
-                      </div>
+                  <div key={type} className={`flex-shrink-0 bg-gradient-to-br ${grad} rounded-2xl p-3.5 min-w-[120px] text-white`}>
+                    <p className="text-[9px] font-bold uppercase tracking-widest opacity-60">{type}</p>
+                    <p className="text-2xl font-extrabold leading-none mt-1.5">{total}</p>
+                    <p className="text-[9px] opacity-50 mt-0.5">total · {pct}% occ</p>
+                    {/* Two-tone mini bar */}
+                    <div className="w-full bg-white/20 rounded-full h-1 mt-2 overflow-hidden">
+                      <div className="h-full bg-white/70 rounded-full" style={{ width: `${pct}%` }} />
                     </div>
-                    {/* Two-tone bar: green = occupied, rose bg = vacant */}
-                    <div className="w-full bg-rose-100 rounded-full h-1 overflow-hidden">
-                      <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+                    {/* Clickable occ / vac chips */}
+                    <div className="flex gap-1.5 mt-2.5">
+                      <button
+                        onClick={() => setTypeModal({ type, mode: 'occupied' })}
+                        className="flex-1 bg-white/20 hover:bg-white/30 active:bg-white/40 rounded-lg py-1 text-center transition-colors"
+                      >
+                        <p className="text-[11px] font-extrabold">{occ}</p>
+                        <p className="text-[8px] opacity-70 uppercase tracking-wide">Occ</p>
+                      </button>
+                      <button
+                        onClick={() => setTypeModal({ type, mode: 'vacant' })}
+                        className="flex-1 bg-white/20 hover:bg-white/30 active:bg-white/40 rounded-lg py-1 text-center transition-colors"
+                      >
+                        <p className="text-[11px] font-extrabold">{vac}</p>
+                        <p className="text-[8px] opacity-70 uppercase tracking-wide">Vac</p>
+                      </button>
                     </div>
                   </div>
                 )
               })}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* ── Organisation-wise cards ───────────────────────── */}
+        {/* ── Vacant quarters — type-wise summary card ─────── */}
+        {typeStats.some(t => t.vac > 0) && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-bold text-slate-800">Vacant Quarters by Type</p>
+                <p className="text-xs text-slate-400 mt-0.5">{stats.vacant} total vacant</p>
+              </div>
+              <span className="text-2xl font-extrabold text-rose-500">{stats.vacant}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {typeStats
+                .filter(t => t.vac > 0)
+                .sort((a, b) => b.vac - a.vac)
+                .map(({ type, vac, total }) => (
+                  <button
+                    key={type}
+                    onClick={() => setTypeModal({ type, mode: 'vacant' })}
+                    className="bg-rose-50 border border-rose-100 rounded-xl px-2 py-2.5 text-center active:bg-rose-100 transition-colors"
+                  >
+                    <p className="text-[9px] text-rose-400 font-bold uppercase tracking-wide truncate">{type}</p>
+                    <p className="text-xl font-extrabold text-rose-600 leading-none mt-0.5">{vac}</p>
+                    <p className="text-[8px] text-rose-300 mt-0.5">of {total}</p>
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+        )}
+
+        {/* ── Organisation-wise cards (horizontal scroll) ───── */}
         {orgStats.length > 0 && (
           <div>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">By Organisation</p>
-            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              {orgStats.map(([dept, count]) => (
-                <OrgCard key={dept} dept={dept} count={count} total={stats.occupied} />
-              ))}
+            <SectionLabel>By Organisation</SectionLabel>
+            <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              {orgStats.map(([dept, count]) => {
+                const grad = ORG_PALETTE[dept] || 'from-slate-400 to-slate-600'
+                const pct  = stats.occupied ? Math.round(count / stats.occupied * 100) : 0
+                return (
+                  <div key={dept} className={`flex-shrink-0 bg-gradient-to-br ${grad} rounded-2xl px-4 py-3 min-w-[96px] text-white`}>
+                    <p className="text-[9px] font-bold uppercase tracking-widest opacity-70">{dept}</p>
+                    <p className="text-2xl font-extrabold leading-none mt-1">{count}</p>
+                    <p className="text-[9px] opacity-55 mt-0.5">{pct}% of occupied</p>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
 
         {/* ── Quick actions ────────────────────────────────── */}
         <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Quick Actions</p>
+          <SectionLabel>Quick Actions</SectionLabel>
           <div className="grid grid-cols-4 gap-2">
             <QuickAction icon={ClipboardList} label="Allotment" bg="bg-brand-50"   text="text-brand-700"   onClick={() => navigate('/allotments')} />
             <QuickAction icon={Key}           label="Key Entry" bg="bg-amber-50"   text="text-amber-700"   onClick={() => navigate('/keys')} />
@@ -192,7 +258,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-1.5">
               <TrendingUp className="w-4 h-4 text-brand-600" />
-              <span className="text-sm font-semibold text-slate-800">Occupancy Rate</span>
+              <span className="text-sm font-semibold text-slate-800">Overall Occupancy</span>
             </div>
             <span className="text-2xl font-extrabold text-brand-700">{occupancyPct}%</span>
           </div>
@@ -286,10 +352,9 @@ export default function Dashboard() {
           <div className="space-y-2">
             {typeModal.mode === 'vacant' ? (
               <>
-                {typeData.list.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-8">No vacant quarters for {typeModal.type}</p>
-                ) : (
-                  typeData.list.map(q => (
+                {typeData.list.length === 0
+                  ? <p className="text-sm text-slate-400 text-center py-8">No vacant quarters for {typeModal.type}</p>
+                  : typeData.list.map(q => (
                     <div key={q.Quarter_ID} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2.5">
                       <div>
                         <p className="text-sm font-semibold text-slate-800">{q.Quarter_No}</p>
@@ -298,7 +363,7 @@ export default function Dashboard() {
                       <span className="badge-vacant">Vacant</span>
                     </div>
                   ))
-                )}
+                }
                 {typeData.list.length > 0 && (
                   <button
                     className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
@@ -309,10 +374,9 @@ export default function Dashboard() {
                 )}
               </>
             ) : (
-              typeData.list.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-8">No active occupants for {typeModal.type}</p>
-              ) : (
-                typeData.list.map((a, i) => (
+              typeData.list.length === 0
+                ? <p className="text-sm text-slate-400 text-center py-8">No active occupants for {typeModal.type}</p>
+                : typeData.list.map((a, i) => (
                   <div key={i} className="flex items-center gap-3 bg-slate-50 rounded-xl px-3 py-2.5">
                     <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center flex-shrink-0">
                       <UserCheck className="w-4 h-4 text-emerald-600" />
@@ -324,7 +388,6 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))
-              )
             )}
           </div>
         )}
@@ -390,6 +453,12 @@ export default function Dashboard() {
 
 /* ── Sub-components ──────────────────────────────────────── */
 
+function SectionLabel({ children }) {
+  return (
+    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{children}</p>
+  )
+}
+
 function StatCard({ icon: Icon, label, value, accent, iconBg, iconColor, onClick }) {
   return (
     <button
@@ -403,28 +472,6 @@ function StatCard({ icon: Icon, label, value, accent, iconBg, iconColor, onClick
       <p className="text-xl font-bold text-slate-800 leading-none">{value ?? '—'}</p>
       <p className="text-[11px] text-slate-600 font-medium mt-1">{label}</p>
     </button>
-  )
-}
-
-const ORG_PALETTE = {
-  NJHPS:  'from-blue-500 to-blue-700',
-  RHPS:   'from-violet-500 to-violet-700',
-  LHEP:   'from-cyan-500 to-cyan-700',
-  CISF:   'from-rose-500 to-rose-700',
-  BSNL:   'from-orange-500 to-orange-700',
-  FA:     'from-teal-500 to-teal-700',
-  Other:  'from-slate-400 to-slate-600',
-}
-
-function OrgCard({ dept, count, total }) {
-  const pct  = total ? Math.round(count / total * 100) : 0
-  const grad = ORG_PALETTE[dept] || 'from-slate-400 to-slate-600'
-  return (
-    <div className={`flex-shrink-0 bg-gradient-to-br ${grad} rounded-xl px-4 py-3 min-w-[96px] text-white`}>
-      <p className="text-[9px] font-bold uppercase tracking-widest opacity-70">{dept}</p>
-      <p className="text-2xl font-extrabold leading-none mt-1">{count}</p>
-      <p className="text-[9px] opacity-60 mt-0.5">{pct}% of occupied</p>
-    </div>
   )
 }
 
