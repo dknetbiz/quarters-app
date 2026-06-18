@@ -185,29 +185,31 @@ export default function Dashboard() {
                 const grad   = typeGradient(type)
                 const suffix = type.replace(/^Type-/i, '')
                 return (
-                  <div key={type} className={`relative bg-gradient-to-br ${grad} rounded-xl p-2 text-white overflow-hidden`}>
-                    {/* Watermark */}
-                    <span className="absolute -right-1 -bottom-2 text-4xl font-black text-white/15 select-none pointer-events-none leading-none">
+                  <div key={type} className={`relative bg-gradient-to-br ${grad} rounded-xl overflow-hidden min-h-[96px] flex flex-col`}>
+                    {/* Centred watermark */}
+                    <span className="absolute inset-0 flex items-center justify-center text-5xl font-black text-white/20 select-none pointer-events-none leading-none">
                       {suffix}
                     </span>
                     {/* Content */}
-                    <p className="text-[7px] font-bold opacity-50 uppercase tracking-wide leading-none">{suffix}</p>
-                    <p className="text-base font-extrabold leading-none mt-0.5">{total}</p>
-                    <div className="flex gap-0.5 mt-1.5">
-                      <button
-                        onClick={() => setTypeModal({ type, mode: 'occupied' })}
-                        className="flex-1 bg-white/20 active:bg-white/40 rounded py-0.5 text-center transition-colors"
-                      >
-                        <p className="text-[9px] font-extrabold leading-none">{occ}</p>
-                        <p className="text-[6px] opacity-55 uppercase mt-px">Occ</p>
-                      </button>
-                      <button
-                        onClick={() => setTypeModal({ type, mode: 'vacant' })}
-                        className="flex-1 bg-white/20 active:bg-white/40 rounded py-0.5 text-center transition-colors"
-                      >
-                        <p className="text-[9px] font-extrabold leading-none">{vac}</p>
-                        <p className="text-[6px] opacity-55 uppercase mt-px">Vac</p>
-                      </button>
+                    <div className="relative z-10 p-2 flex flex-col flex-1">
+                      <p className="text-[8px] font-bold text-white uppercase tracking-wide leading-none">{suffix}</p>
+                      <p className="text-lg font-extrabold text-white leading-none mt-1 flex-1">{total}</p>
+                      <div className="flex gap-0.5 mt-auto">
+                        <button
+                          onClick={() => setTypeModal({ type, mode: 'occupied' })}
+                          className="flex-1 bg-white/20 active:bg-white/40 rounded py-0.5 text-center transition-colors"
+                        >
+                          <p className="text-[9px] font-extrabold text-white leading-none">{occ}</p>
+                          <p className="text-[6px] text-white/60 uppercase mt-px">Occ</p>
+                        </button>
+                        <button
+                          onClick={() => setTypeModal({ type, mode: 'vacant' })}
+                          className="flex-1 bg-white/20 active:bg-white/40 rounded py-0.5 text-center transition-colors"
+                        >
+                          <p className="text-[9px] font-extrabold text-white leading-none">{vac}</p>
+                          <p className="text-[6px] text-white/60 uppercase mt-px">Vac</p>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
@@ -232,16 +234,18 @@ export default function Dashboard() {
                     <button
                       key={type}
                       onClick={() => setTypeModal({ type, mode: 'vacant' })}
-                      className="relative bg-rose-50 border border-rose-100 rounded-lg py-2 px-1 text-center overflow-hidden active:bg-rose-100 transition-colors"
+                      className="relative bg-rose-50 border border-rose-100 rounded-lg overflow-hidden active:bg-rose-100 transition-colors min-h-[72px] flex flex-col items-center justify-center"
                     >
-                      {/* Watermark */}
-                      <span className="absolute -right-0.5 -bottom-1.5 text-3xl font-black text-rose-200/60 select-none pointer-events-none leading-none">
+                      {/* Centred watermark */}
+                      <span className="absolute inset-0 flex items-center justify-center text-4xl font-black text-rose-200/60 select-none pointer-events-none leading-none">
                         {suffix}
                       </span>
                       {/* Content */}
-                      <p className="relative text-base font-extrabold text-rose-600 leading-none">{vac}</p>
-                      <p className="relative text-[7px] text-rose-400 font-semibold mt-0.5">/{total}</p>
-                      <p className="relative text-[7px] text-rose-300 font-bold uppercase tracking-wide mt-0.5 truncate">{suffix}</p>
+                      <div className="relative z-10 flex flex-col items-center py-2 px-1">
+                        <p className="text-lg font-extrabold text-rose-600 leading-none">{vac}</p>
+                        <p className="text-[7px] text-rose-400 font-semibold mt-0.5">/{total}</p>
+                        <p className="text-[7px] text-rose-300 font-bold uppercase tracking-wide mt-px truncate max-w-full">{suffix}</p>
+                      </div>
                     </button>
                   )
                 })

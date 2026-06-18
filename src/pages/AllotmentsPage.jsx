@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Plus, Search, ClipboardList, ChevronRight, UserCheck, UserX } from 'lucide-react'
+import { Plus, Search, ClipboardList, UserCheck, UserX, UserMinus, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { createAllotment, vacateAllotment, addEmployee } from '../lib/googleSheets'
@@ -7,16 +7,18 @@ import { ALLOTMENT_TYPES, CATEGORIES, DEPARTMENTS } from '../lib/constants'
 import Modal from '../components/Modal'
 
 export default function AllotmentsPage() {
-  const { allotments, quarters, employees, refreshAllotments, refreshQuarters, refreshEmployees, loadingData, fetchAll, lastFetched } = useData()
+  const { allotments, quarters, employees, refreshAllotments, refreshQuarters, refreshEmployees, fetchAll, lastFetched } = useData()
   const { auditUser } = useAuth()
 
-  const [search,    setSearch]    = useState('')
-  const [tab,       setTab]       = useState('active') // active | history
-  const [showNew,   setShowNew]   = useState(false)
+  const [search,     setSearch]     = useState('')
+  const [tab,        setTab]        = useState('active')
+  const [showNew,    setShowNew]    = useState(false)
   const [showAddEmp, setShowAddEmp] = useState(false)
-  const [selected,  setSelected]  = useState(null)
-  const [saving,    setSaving]    = useState(false)
+  const [selected,   setSelected]   = useState(null)
+  const [saving,     setSaving]     = useState(false)
   const [vacateDate, setVacateDate] = useState(today())
+  const [sortKey,    setSortKey]    = useState(null)
+  const [sortDir,    setSortDir]    = useState('asc')
 
   const emptyForm = { quarter_id:'', emp_id:'', allotment_date: today(), allotment_type:'Allotment', rent:'', remarks:'' }
   const [form, setForm] = useState(emptyForm)
@@ -25,20 +27,43 @@ export default function AllotmentsPage() {
 
   useEffect(() => { if (!lastFetched) fetchAll() }, [])
 
-  const displayList = useMemo(() => {
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  const baseList = useMemo(() => {
     const list = tab === 'active'
       ? allotments.filter(a => a.Status === 'Active')
       : allotments.filter(a => a.Status === 'Vacated')
-    return list.filter(a => {
-      const emp = employees.find(e => e.Emp_ID === a.Emp_ID)
-      const qtr = quarters.find(q => q.Quarter_ID === a.Quarter_ID)
-      return !search ||
-        a.Quarter_ID?.toLowerCase().includes(search.toLowerCase()) ||
-        a.Emp_ID?.toLowerCase().includes(search.toLowerCase()) ||
-        emp?.Name?.toLowerCase().includes(search.toLowerCase()) ||
-        qtr?.Quarter_No?.toLowerCase().includes(search.toLowerCase())
+    return list.map(a => ({
+      ...a,
+      emp: employees.find(e => e.Emp_ID === a.Emp_ID),
+      qtr: quarters.find(q => q.Quarter_ID === a.Quarter_ID),
+    }))
+  }, [allotments, employees, quarters, tab])
+
+  const filtered = useMemo(() => {
+    const s = search.toLowerCase()
+    if (!s) return baseList
+    return baseList.filter(a =>
+      a.Quarter_ID?.toLowerCase().includes(s) ||
+      a.Emp_ID?.toLowerCase().includes(s) ||
+      a.emp?.Name?.toLowerCase().includes(s) ||
+      a.qtr?.Quarter_No?.toLowerCase().includes(s) ||
+      a.emp?.Department?.toLowerCase().includes(s)
+    )
+  }, [baseList, search])
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return filtered
+    return [...filtered].sort((a, b) => {
+      const va = (sortKey === 'emp_name' ? a.emp?.Name : sortKey === 'qtr_no' ? a.qtr?.Quarter_No : a[sortKey]) || ''
+      const vb = (sortKey === 'emp_name' ? b.emp?.Name : sortKey === 'qtr_no' ? b.qtr?.Quarter_No : b[sortKey]) || ''
+      const cmp = va.localeCompare(vb, undefined, { numeric: true })
+      return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [allotments, employees, quarters, tab, search])
+  }, [filtered, sortKey, sortDir])
 
   const vacantQuarters = quarters.filter(q => q.Status === 'Vacant')
   const activeEmp      = employees.filter(e => e.Active === 'TRUE')
@@ -46,96 +71,116 @@ export default function AllotmentsPage() {
   async function handleCreate() {
     if (!form.quarter_id || !form.emp_id || !form.allotment_date) return
     setSaving(true)
-    try {
-      await createAllotment(form, auditUser)
-      await Promise.all([refreshAllotments(), refreshQuarters()])
-      setShowNew(false); setForm(emptyForm)
-    } catch(e) { alert('Error: ' + e.message) }
-    finally { setSaving(false) }
+    try { await createAllotment(form, auditUser); await Promise.all([refreshAllotments(), refreshQuarters()]); setShowNew(false); setForm(emptyForm) }
+    catch(e) { alert('Error: ' + e.message) } finally { setSaving(false) }
   }
 
   async function handleVacate() {
     if (!selected || !vacateDate) return
     setSaving(true)
-    try {
-      await vacateAllotment(selected, vacateDate, auditUser)
-      await Promise.all([refreshAllotments(), refreshQuarters()])
-      setSelected(null)
-    } catch(e) { alert('Error: ' + e.message) }
-    finally { setSaving(false) }
+    try { await vacateAllotment(selected, vacateDate, auditUser); await Promise.all([refreshAllotments(), refreshQuarters()]); setSelected(null) }
+    catch(e) { alert('Error: ' + e.message) } finally { setSaving(false) }
   }
 
   async function handleAddEmployee() {
     if (!empForm.name || !empForm.designation) return
     setSaving(true)
-    try {
-      await addEmployee(empForm, auditUser)
-      await refreshEmployees()
-      setShowAddEmp(false); setEmpForm(empForm0)
-    } catch(e) { alert('Error: ' + e.message) }
-    finally { setSaving(false) }
+    try { await addEmployee(empForm, auditUser); await refreshEmployees(); setShowAddEmp(false); setEmpForm(empForm0) }
+    catch(e) { alert('Error: ' + e.message) } finally { setSaving(false) }
   }
 
-  const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
+  const f  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
   const ef = k => e => setEmpForm(p => ({ ...p, [k]: e.target.value }))
+
+  const activeCount  = allotments.filter(a => a.Status === 'Active').length
+  const vacatedCount = allotments.filter(a => a.Status === 'Vacated').length
 
   return (
     <div className="p-4 space-y-3">
-      {/* Tabs */}
+
+      {/* ── Tabs ── */}
       <div className="flex bg-slate-100 rounded-xl p-1">
-        <button onClick={() => setTab('active')} className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab==='active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
-          Active ({allotments.filter(a=>a.Status==='Active').length})
-        </button>
-        <button onClick={() => setTab('history')} className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab==='history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
-          History ({allotments.filter(a=>a.Status==='Vacated').length})
-        </button>
+        <TabBtn active={tab === 'active'}  onClick={() => setTab('active')}  label={`Active (${activeCount})`} />
+        <TabBtn active={tab === 'history'} onClick={() => setTab('history')} label={`History (${vacatedCount})`} />
       </div>
 
-      {/* Search + Add */}
+      {/* ── Toolbar ── */}
       <div className="flex gap-2">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input className="input pl-9" placeholder="Search by name, quarter..." value={search} onChange={e=>setSearch(e.target.value)} />
+          <input className="input pl-9" placeholder="Search by name, quarter, dept…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1">
-          <Plus className="w-4 h-4" /> New
+        <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5">
+          <Plus className="w-4 h-4" /> New Allotment
         </button>
       </div>
 
-      {/* List */}
-      <div className="space-y-2">
-        {displayList.map(a => {
-          const emp = employees.find(e => e.Emp_ID === a.Emp_ID)
-          const qtr = quarters.find(q => q.Quarter_ID === a.Quarter_ID)
-          return (
-            <button key={a.Allotment_ID} onClick={() => { setSelected(a); setVacateDate(today()) }}
-              className="w-full card flex items-center gap-3 text-left active:scale-98 transition-transform">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${a.Status==='Active' ? 'bg-emerald-50' : 'bg-slate-100'}`}>
-                {a.Status === 'Active'
-                  ? <UserCheck className="w-5 h-5 text-emerald-600" />
-                  : <UserX className="w-5 h-5 text-slate-400" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-800 truncate">{emp?.Name || a.Emp_ID}</p>
-                <p className="text-xs text-slate-500">{qtr?.Quarter_No || a.Quarter_ID} · {emp?.Designation || ''}</p>
-                <p className="text-xs text-slate-400">{a.Allotment_Date} {a.Vacated_Date ? `→ ${a.Vacated_Date}` : ''} · {a.Allotment_Type}</p>
-              </div>
-              <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                <span className={a.Status==='Active' ? 'badge-occupied' : 'badge-vacant'}>{a.Status}</span>
-                {emp?.Category && <span className="text-xs text-slate-400">{emp.Category}</span>}
-              </div>
-            </button>
-          )
-        })}
-        {displayList.length === 0 && (
-          <div className="text-center py-12 text-slate-400">
-            <ClipboardList className="w-10 h-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No allotments found</p>
-          </div>
-        )}
+      <p className="text-xs text-slate-400 font-medium">{sorted.length} record{sorted.length !== 1 ? 's' : ''}</p>
+
+      {/* ── Table ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead>
+              <tr className="bg-slate-800 text-white">
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide w-10">#</th>
+                <SortTh label="Quarter"    field="qtr_no"         sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Employee"   field="emp_name"        sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Department" field="Department"      sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Category</th>
+                <SortTh label="Date"       field="Allotment_Date"  sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Type</th>
+                <th className="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wide">Rent</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Status</th>
+                <th className="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wide">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {sorted.map((a, i) => (
+                <tr key={a.Allotment_ID} className={`hover:bg-brand-50/40 transition-colors ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
+                  <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{i + 1}</td>
+                  <td className="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">{a.qtr?.Quarter_No || a.Quarter_ID}</td>
+                  <td className="px-3 py-2.5 max-w-[160px]">
+                    <p className="text-xs font-semibold text-slate-700 truncate">{a.emp?.Name || a.Emp_ID}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{a.emp?.Designation || ''}</p>
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{a.emp?.Department || '—'}</td>
+                  <td className="px-3 py-2.5 text-slate-500">{a.emp?.Category || '—'}</td>
+                  <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{a.Allotment_Date}</td>
+                  <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{a.Allotment_Type}</td>
+                  <td className="px-3 py-2.5 text-slate-700 font-medium text-right whitespace-nowrap">
+                    {a.Rent ? `₹${a.Rent}` : '—'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <AllotStatusBadge status={a.Status} />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <ActionBtn
+                        icon={Eye}
+                        color={a.Status === 'Active' ? 'blue' : 'slate'}
+                        title="View / Vacate"
+                        onClick={() => { setSelected(a); setVacateDate(today()) }}
+                      />
+                      {a.Status === 'Active' && (
+                        <ActionBtn icon={UserMinus} color="red" title="Vacate" onClick={() => { setSelected(a); setVacateDate(today()) }} />
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {sorted.length === 0 && (
+                <tr><td colSpan={10} className="px-4 py-14 text-center text-slate-400">
+                  <ClipboardList className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No allotments found</p>
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* New Allotment Modal */}
+      {/* ── New Allotment Modal ── */}
       <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="New Allotment">
         <div className="space-y-3">
           <div>
@@ -148,7 +193,7 @@ export default function AllotmentsPage() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="label mb-0">Employee *</label>
-              <button onClick={() => setShowAddEmp(true)} className="text-xs text-brand-600 font-medium">+ New Employee</button>
+              <button onClick={() => setShowAddEmp(true)} className="text-xs text-brand-600 font-semibold">+ New Employee</button>
             </div>
             <select className="input" value={form.emp_id} onChange={f('emp_id')}>
               <option value="">Select employee</option>
@@ -178,35 +223,37 @@ export default function AllotmentsPage() {
         </div>
         <div className="flex gap-2 mt-4">
           <button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleCreate} disabled={saving}>{saving ? 'Saving...' : 'Create Allotment'}</button>
+          <button className="btn-primary flex-1" onClick={handleCreate} disabled={saving}>{saving ? 'Saving…' : 'Create Allotment'}</button>
         </div>
       </Modal>
 
-      {/* Detail / Vacate Modal */}
+      {/* ── Detail / Vacate Modal ── */}
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Allotment Details">
         {selected && (() => {
-          const emp = employees.find(e => e.Emp_ID === selected.Emp_ID)
-          const qtr = quarters.find(q => q.Quarter_ID === selected.Quarter_ID)
+          const emp = selected.emp
+          const qtr = selected.qtr
           return (
-            <div className="space-y-3">
-              <DetailRow label="Quarter"    value={qtr?.Quarter_No || selected.Quarter_ID} />
-              <DetailRow label="Employee"   value={emp?.Name || selected.Emp_ID} />
-              <DetailRow label="Designation" value={emp?.Designation || '—'} />
-              <DetailRow label="Department" value={emp?.Department || '—'} />
-              <DetailRow label="Category"   value={emp?.Category || '—'} />
-              <DetailRow label="Allotted On" value={selected.Allotment_Date} />
-              <DetailRow label="Type"       value={selected.Allotment_Type} />
-              <DetailRow label="Rent"       value={selected.Rent ? `₹${selected.Rent}` : '—'} />
-              <DetailRow label="Status"     value={selected.Status} />
-              {selected.Vacated_Date && <DetailRow label="Vacated On" value={selected.Vacated_Date} />}
-              {selected.Remarks && <DetailRow label="Remarks" value={selected.Remarks} />}
-
+            <div className="space-y-2.5">
+              <DetailGrid rows={[
+                ['Quarter',     qtr?.Quarter_No || selected.Quarter_ID],
+                ['Type',        qtr?.Type || '—'],
+                ['Employee',    emp?.Name || selected.Emp_ID],
+                ['Designation', emp?.Designation || '—'],
+                ['Department',  emp?.Department || '—'],
+                ['Category',    emp?.Category || '—'],
+                ['Allotted On', selected.Allotment_Date],
+                ['Type',        selected.Allotment_Type],
+                ['Rent',        selected.Rent ? `₹${selected.Rent}` : '—'],
+                ['Status',      selected.Status],
+                selected.Vacated_Date && ['Vacated On', selected.Vacated_Date],
+                selected.Remarks && ['Remarks', selected.Remarks],
+              ].filter(Boolean)} />
               {selected.Status === 'Active' && (
                 <div className="pt-3 border-t border-slate-100">
                   <label className="label">Vacate Date</label>
                   <input className="input" type="date" value={vacateDate} onChange={e => setVacateDate(e.target.value)} />
                   <button className="btn-danger w-full mt-3" onClick={handleVacate} disabled={saving}>
-                    {saving ? 'Processing...' : 'Mark as Vacated'}
+                    {saving ? 'Processing…' : 'Mark as Vacated'}
                   </button>
                 </div>
               )}
@@ -215,7 +262,7 @@ export default function AllotmentsPage() {
         })()}
       </Modal>
 
-      {/* Add Employee Modal */}
+      {/* ── Add Employee Modal ── */}
       <Modal open={showAddEmp} onClose={() => { setShowAddEmp(false); setEmpForm(empForm0) }} title="Add Employee">
         <div className="space-y-3">
           <div><label className="label">Full Name *</label><input className="input" value={empForm.name} onChange={ef('name')} /></div>
@@ -235,22 +282,62 @@ export default function AllotmentsPage() {
         </div>
         <div className="flex gap-2 mt-4">
           <button className="btn-secondary flex-1" onClick={() => { setShowAddEmp(false); setEmpForm(empForm0) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleAddEmployee} disabled={saving}>{saving ? 'Saving...' : 'Add Employee'}</button>
+          <button className="btn-primary flex-1" onClick={handleAddEmployee} disabled={saving}>{saving ? 'Saving…' : 'Add Employee'}</button>
         </div>
       </Modal>
+
     </div>
   )
 }
 
-function DetailRow({ label, value }) {
+/* ── Sub-components ── */
+
+function TabBtn({ active, onClick, label }) {
   return (
-    <div className="flex justify-between gap-4">
-      <span className="text-xs text-slate-400 flex-shrink-0">{label}</span>
-      <span className="text-sm text-slate-700 text-right">{value || '—'}</span>
+    <button onClick={onClick} className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors ${active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
+      {label}
+    </button>
+  )
+}
+
+function SortTh({ label, field, sortKey, sortDir, onSort }) {
+  const active = sortKey === field
+  const Icon = active ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown
+  return (
+    <th onClick={() => onSort(field)}
+      className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide cursor-pointer select-none hover:bg-slate-700 transition-colors whitespace-nowrap">
+      <span className="flex items-center gap-1">
+        {label}<Icon className={`w-3 h-3 ${active ? 'opacity-100' : 'opacity-30'}`} />
+      </span>
+    </th>
+  )
+}
+
+function AllotStatusBadge({ status }) {
+  const map = { 'Active': 'bg-emerald-100 text-emerald-700', 'Vacated': 'bg-slate-100 text-slate-500' }
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${map[status] || 'bg-slate-100 text-slate-600'}`}>{status}</span>
+}
+
+function ActionBtn({ icon: Icon, color, title, onClick }) {
+  const colors = { blue: 'bg-blue-50 text-blue-600 hover:bg-blue-100', red: 'bg-red-50 text-red-600 hover:bg-red-100', slate: 'bg-slate-100 text-slate-500 hover:bg-slate-200' }
+  return (
+    <button onClick={onClick} title={title} className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${colors[color] || colors.slate}`}>
+      <Icon className="w-3.5 h-3.5" />
+    </button>
+  )
+}
+
+function DetailGrid({ rows }) {
+  return (
+    <div className="bg-slate-50 rounded-xl overflow-hidden">
+      {rows.map(([label, value], i) => (
+        <div key={i} className={`flex justify-between gap-4 px-3 py-2 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
+          <span className="text-xs text-slate-400 font-medium flex-shrink-0">{label}</span>
+          <span className="text-xs text-slate-700 font-semibold text-right">{value || '—'}</span>
+        </div>
+      ))}
     </div>
   )
 }
 
-function today() {
-  return new Date().toISOString().split('T')[0]
-}
+function today() { return new Date().toISOString().split('T')[0] }

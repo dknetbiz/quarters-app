@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { IndianRupee, Plus, Search, AlertCircle } from 'lucide-react'
+import { IndianRupee, Plus, Search, AlertCircle, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { addRentEntry } from '../lib/googleSheets'
@@ -8,9 +8,13 @@ import Modal from '../components/Modal'
 export default function RentPage() {
   const { rent, allotments, quarters, employees, refreshRent, fetchAll, lastFetched } = useData()
   const { auditUser } = useAuth()
-  const [search,  setSearch]  = useState('')
-  const [showNew, setShowNew] = useState(false)
-  const [saving,  setSaving]  = useState(false)
+
+  const [search,   setSearch]   = useState('')
+  const [showNew,  setShowNew]  = useState(false)
+  const [selected, setSelected] = useState(null)
+  const [saving,   setSaving]   = useState(false)
+  const [sortKey,  setSortKey]  = useState('Month')
+  const [sortDir,  setSortDir]  = useState('desc')
 
   const emptyForm = { allotment_id:'', quarter_id:'', emp_id:'', month: currentMonth(), standard_rent:'', actual_recovery:'', remarks:'' }
   const [form, setForm] = useState(emptyForm)
@@ -19,106 +23,146 @@ export default function RentPage() {
 
   const activeAllotments = allotments.filter(a => a.Status === 'Active')
 
-  const displayList = useMemo(() => {
-    return rent.filter(r =>
-      !search ||
-      r.Quarter_ID?.toLowerCase().includes(search.toLowerCase()) ||
-      r.Emp_ID?.toLowerCase().includes(search.toLowerCase()) ||
-      r.Month?.toLowerCase().includes(search.toLowerCase())
-    ).sort((a,b) => b.Month?.localeCompare(a.Month))
-  }, [rent, search])
+  function toggleSort(key) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
 
-  const discrepancies = rent.filter(r => parseFloat(r.Difference) > 0)
-  const totalRecovery = rent.reduce((s, r) => s + (parseFloat(r.Actual_Recovery) || 0), 0)
+  const baseList = useMemo(() => rent.map(r => ({
+    ...r,
+    emp: employees.find(e => e.Emp_ID === r.Emp_ID),
+    qtr: quarters.find(q => q.Quarter_ID === r.Quarter_ID),
+    diff: parseFloat(r.Difference) || 0,
+    recovery: parseFloat(r.Actual_Recovery) || 0,
+    standard: parseFloat(r.Standard_Rent) || 0,
+  })), [rent, employees, quarters])
+
+  const filtered = useMemo(() => {
+    const s = search.toLowerCase()
+    if (!s) return baseList
+    return baseList.filter(r =>
+      r.emp?.Name?.toLowerCase().includes(s) ||
+      r.qtr?.Quarter_No?.toLowerCase().includes(s) ||
+      r.Month?.toLowerCase().includes(s) ||
+      r.Emp_ID?.toLowerCase().includes(s)
+    )
+  }, [baseList, search])
+
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
+    const va = sortKey === 'emp_name' ? (a.emp?.Name || '') : sortKey === 'qtr_no' ? (a.qtr?.Quarter_No || '') : (a[sortKey] || '')
+    const vb = sortKey === 'emp_name' ? (b.emp?.Name || '') : sortKey === 'qtr_no' ? (b.qtr?.Quarter_No || '') : (b[sortKey] || '')
+    const cmp = va.localeCompare(vb, undefined, { numeric: true })
+    return sortDir === 'asc' ? cmp : -cmp
+  }), [filtered, sortKey, sortDir])
 
   function handleAllotmentSelect(e) {
     const alt = activeAllotments.find(a => a.Allotment_ID === e.target.value)
-    if (alt) {
-      setForm(p => ({ ...p, allotment_id: alt.Allotment_ID, quarter_id: alt.Quarter_ID, emp_id: alt.Emp_ID, standard_rent: alt.Rent || '' }))
-    }
+    if (alt) setForm(p => ({ ...p, allotment_id: alt.Allotment_ID, quarter_id: alt.Quarter_ID, emp_id: alt.Emp_ID, standard_rent: alt.Rent || '' }))
   }
 
   async function handleSave() {
     if (!form.allotment_id || !form.month || !form.actual_recovery) return
     setSaving(true)
-    try {
-      await addRentEntry(form, auditUser)
-      await refreshRent()
-      setShowNew(false); setForm(emptyForm)
-    } catch(e) { alert('Error: ' + e.message) }
-    finally { setSaving(false) }
+    try { await addRentEntry(form, auditUser); await refreshRent(); setShowNew(false); setForm(emptyForm) }
+    catch(e) { alert('Error: ' + e.message) } finally { setSaving(false) }
   }
 
   const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
+  const totalRecovery  = baseList.reduce((s, r) => s + r.recovery, 0)
+  const totalStandard  = baseList.reduce((s, r) => s + r.standard, 0)
+  const shortfallCount = baseList.filter(r => r.diff > 0).length
+  const shortfallTotal = baseList.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0)
+
   return (
     <div className="p-4 space-y-3">
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="card">
-          <p className="text-xs text-slate-400">Total Entries</p>
-          <p className="text-2xl font-bold text-slate-800">{rent.length}</p>
-        </div>
-        <div className="card">
-          <p className="text-xs text-slate-400">Total Recovered</p>
-          <p className="text-xl font-bold text-emerald-600">₹{totalRecovery.toLocaleString('en-IN')}</p>
-        </div>
+
+      {/* ── Summary strip ── */}
+      <div className="grid grid-cols-3 gap-2">
+        <SummaryCard label="Entries" value={rent.length} color="slate" />
+        <SummaryCard label="Recovered" value={`₹${fmtAmt(totalRecovery)}`} color="emerald" />
+        <SummaryCard label="Standard" value={`₹${fmtAmt(totalStandard)}`} color="blue" />
       </div>
 
-      {/* Discrepancy alert */}
-      {discrepancies.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-red-800">{discrepancies.length} recovery shortfall(s)</p>
-            <p className="text-xs text-red-600 mt-0.5">Standard rent vs actual recovery mismatch</p>
-          </div>
+      {/* ── Shortfall alert ── */}
+      {shortfallCount > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+          <p className="text-xs text-red-800 font-semibold">
+            {shortfallCount} shortfall{shortfallCount > 1 ? 's' : ''} — total ₹{fmtAmt(shortfallTotal)} under-recovered
+          </p>
         </div>
       )}
 
-      {/* Search + Add */}
+      {/* ── Toolbar ── */}
       <div className="flex gap-2">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input className="input pl-9" placeholder="Search rent entries..." value={search} onChange={e=>setSearch(e.target.value)} />
+          <input className="input pl-9" placeholder="Search by employee, quarter or month…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1">
-          <Plus className="w-4 h-4" /> Add
+        <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5">
+          <Plus className="w-4 h-4" /> Add Entry
         </button>
       </div>
 
-      {/* List */}
-      <div className="space-y-2">
-        {displayList.map(r => {
-          const emp = employees.find(e => e.Emp_ID === r.Emp_ID)
-          const qtr = quarters.find(q => q.Quarter_ID === r.Quarter_ID)
-          const diff = parseFloat(r.Difference) || 0
-          return (
-            <div key={r.Rent_ID} className="card">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-800 truncate">{emp?.Name || r.Emp_ID}</p>
-                  <p className="text-xs text-slate-500">{qtr?.Quarter_No || r.Quarter_ID} · {r.Month}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-sm font-semibold text-emerald-600">₹{parseFloat(r.Actual_Recovery||0).toLocaleString('en-IN')}</p>
-                  {diff > 0 && <p className="text-xs text-red-500">Short ₹{diff.toLocaleString('en-IN')}</p>}
-                  {diff < 0 && <p className="text-xs text-blue-500">Excess ₹{Math.abs(diff).toLocaleString('en-IN')}</p>}
-                </div>
-              </div>
-              {r.Remarks && <p className="text-xs text-slate-400 mt-1">{r.Remarks}</p>}
-            </div>
-          )
-        })}
-        {displayList.length === 0 && (
-          <div className="text-center py-12 text-slate-400">
-            <IndianRupee className="w-10 h-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No rent entries found</p>
-          </div>
-        )}
+      <p className="text-xs text-slate-400 font-medium">{sorted.length} record{sorted.length !== 1 ? 's' : ''}</p>
+
+      {/* ── Table ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[620px]">
+            <thead>
+              <tr className="bg-slate-800 text-white">
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide w-10">#</th>
+                <SortTh label="Month"    field="Month"    sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Quarter"  field="qtr_no"   sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Employee" field="emp_name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <th className="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wide">Standard (₹)</th>
+                <th className="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wide">Recovered (₹)</th>
+                <th className="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wide">Diff (₹)</th>
+                <th className="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wide">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {sorted.map((r, i) => {
+                const shortfall = r.diff > 0
+                const excess    = r.diff < 0
+                return (
+                  <tr key={r.Rent_ID} className={`hover:bg-brand-50/40 transition-colors ${i % 2 === 1 ? 'bg-slate-50/60' : ''} ${shortfall ? 'bg-red-50/40' : ''}`}>
+                    <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{i + 1}</td>
+                    <td className="px-3 py-2.5 text-slate-700 font-medium whitespace-nowrap">{r.Month}</td>
+                    <td className="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">{r.qtr?.Quarter_No || r.Quarter_ID}</td>
+                    <td className="px-3 py-2.5">
+                      <p className="text-xs font-semibold text-slate-700 truncate max-w-[130px]">{r.emp?.Name || r.Emp_ID}</p>
+                      {r.emp?.Department && <p className="text-[11px] text-slate-400">{r.emp.Department}</p>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-slate-500">{r.standard > 0 ? fmtAmt(r.standard) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-emerald-600">{fmtAmt(r.recovery)}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      {shortfall && <span className="text-xs font-semibold text-red-500">-{fmtAmt(r.diff)}</span>}
+                      {excess    && <span className="text-xs font-semibold text-blue-500">+{fmtAmt(Math.abs(r.diff))}</span>}
+                      {!shortfall && !excess && <span className="text-xs text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center justify-center">
+                        <ActionBtn icon={Eye} color="blue" title="View Details" onClick={() => setSelected(r)} />
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {sorted.length === 0 && (
+                <tr><td colSpan={8} className="px-4 py-14 text-center text-slate-400">
+                  <IndianRupee className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No rent entries found</p>
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Add Rent Modal */}
+      {/* ── Add Rent Modal ── */}
       <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="Add Rent Entry">
         <div className="space-y-3">
           <div>
@@ -146,11 +190,14 @@ export default function RentPage() {
               <input className="input" type="number" placeholder="0" value={form.actual_recovery} onChange={f('actual_recovery')} />
             </div>
           </div>
-          {form.standard_rent && form.actual_recovery && (
-            <div className={`rounded-xl px-3 py-2 text-sm ${parseFloat(form.standard_rent) > parseFloat(form.actual_recovery) ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
-              Difference: ₹{(parseFloat(form.standard_rent||0) - parseFloat(form.actual_recovery||0)).toLocaleString('en-IN')}
-            </div>
-          )}
+          {form.standard_rent && form.actual_recovery && (() => {
+            const diff = parseFloat(form.standard_rent || 0) - parseFloat(form.actual_recovery || 0)
+            return (
+              <div className={`rounded-xl px-3 py-2 text-xs font-semibold ${diff > 0 ? 'bg-red-50 text-red-700' : diff < 0 ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                {diff > 0 ? `Shortfall: ₹${fmtAmt(diff)}` : diff < 0 ? `Excess: ₹${fmtAmt(Math.abs(diff))}` : 'Exact match'}
+              </div>
+            )
+          })()}
           <div>
             <label className="label">Remarks</label>
             <input className="input" placeholder="Optional" value={form.remarks} onChange={f('remarks')} />
@@ -158,10 +205,70 @@ export default function RentPage() {
         </div>
         <div className="flex gap-2 mt-4">
           <button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save Entry'}</button>
+          <button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Entry'}</button>
         </div>
       </Modal>
+
+      {/* ── Detail Modal ── */}
+      <Modal open={!!selected} onClose={() => setSelected(null)} title="Rent Entry Details">
+        {selected && (
+          <div className="space-y-3">
+            <div className="bg-slate-50 rounded-xl overflow-hidden">
+              {[
+                ['Month',          selected.Month],
+                ['Quarter',        selected.qtr?.Quarter_No || selected.Quarter_ID],
+                ['Employee',       selected.emp?.Name || selected.Emp_ID],
+                ['Department',     selected.emp?.Department || '—'],
+                ['Standard Rent',  selected.standard > 0 ? `₹${fmtAmt(selected.standard)}` : '—'],
+                ['Actual Recovery',`₹${fmtAmt(selected.recovery)}`],
+                selected.diff !== 0 && ['Difference', selected.diff > 0 ? `-₹${fmtAmt(selected.diff)} (shortfall)` : `+₹${fmtAmt(Math.abs(selected.diff))} (excess)`],
+                selected.Remarks && ['Remarks', selected.Remarks],
+              ].filter(Boolean).map(([l, v], i) => (
+                <div key={i} className={`flex justify-between gap-4 px-3 py-2 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
+                  <span className="text-xs text-slate-400 font-medium">{l}</span>
+                  <span className={`text-xs font-semibold text-right ${l === 'Difference' && selected.diff > 0 ? 'text-red-600' : l === 'Difference' && selected.diff < 0 ? 'text-blue-600' : l === 'Actual Recovery' ? 'text-emerald-600' : 'text-slate-700'}`}>{v || '—'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Modal>
+
     </div>
+  )
+}
+
+/* ── Sub-components ── */
+
+function SummaryCard({ label, value, color }) {
+  const colors = { slate: 'text-slate-800', emerald: 'text-emerald-600', blue: 'text-blue-600' }
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-3 py-2.5">
+      <p className="text-[11px] text-slate-400 font-medium">{label}</p>
+      <p className={`text-base font-bold mt-0.5 ${colors[color]}`}>{value}</p>
+    </div>
+  )
+}
+
+function SortTh({ label, field, sortKey, sortDir, onSort }) {
+  const active = sortKey === field
+  const Icon = active ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown
+  return (
+    <th onClick={() => onSort(field)}
+      className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide cursor-pointer select-none hover:bg-slate-700 transition-colors whitespace-nowrap">
+      <span className="flex items-center gap-1">
+        {label}<Icon className={`w-3 h-3 ${active ? 'opacity-100' : 'opacity-30'}`} />
+      </span>
+    </th>
+  )
+}
+
+function ActionBtn({ icon: Icon, color, title, onClick }) {
+  const colors = { blue: 'bg-blue-50 text-blue-600 hover:bg-blue-100' }
+  return (
+    <button onClick={onClick} title={title} className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${colors[color]}`}>
+      <Icon className="w-3.5 h-3.5" />
+    </button>
   )
 }
 
@@ -169,3 +276,5 @@ function currentMonth() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
 }
+
+function fmtAmt(n) { return Number(n).toLocaleString('en-IN') }
