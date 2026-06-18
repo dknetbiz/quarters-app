@@ -10,20 +10,27 @@ import { createAllotment } from '../lib/googleSheets'
 import { ALLOTMENT_TYPES } from '../lib/constants'
 import Modal from '../components/Modal'
 
-// Gradient palette cycled across quarter types
+// Canonical type ordering (suffix after "Type-")
+const TYPE_ORDER = ['D1','D','C','V','IV','B','III','II','A','I','C&D','0']
+
+// Gradient palette — indexed so same type always gets same colour
 const TYPE_GRADIENTS = [
-  'from-blue-600 to-blue-800',
-  'from-violet-600 to-violet-800',
-  'from-teal-600 to-teal-800',
-  'from-indigo-600 to-indigo-800',
-  'from-sky-600 to-sky-800',
-  'from-emerald-600 to-emerald-800',
-  'from-purple-600 to-purple-800',
-  'from-cyan-600 to-cyan-800',
+  'from-slate-700 to-slate-900',   // D1
+  'from-blue-700 to-blue-900',     // D
+  'from-indigo-600 to-indigo-800', // C
+  'from-violet-600 to-violet-800', // V
+  'from-purple-600 to-purple-800', // IV
+  'from-teal-600 to-teal-800',     // B
+  'from-cyan-600 to-cyan-800',     // III
+  'from-sky-600 to-sky-800',       // II
+  'from-emerald-600 to-emerald-800',// A
+  'from-green-600 to-green-800',   // I
+  'from-lime-600 to-lime-800',     // C&D
+  'from-amber-600 to-amber-800',   // 0
+  'from-orange-600 to-orange-800', // overflow
   'from-rose-600 to-rose-800',
-  'from-orange-500 to-orange-700',
-  'from-amber-500 to-amber-700',
   'from-pink-600 to-pink-800',
+  'from-fuchsia-600 to-fuchsia-800',
 ]
 
 const ORG_PALETTE = {
@@ -36,6 +43,19 @@ const ORG_PALETTE = {
   Other: 'from-slate-400 to-slate-600',
 }
 
+function sortTypes(entries) {
+  return [...entries].sort((a, b) => {
+    const sA = a.type.replace(/^Type-/i, '')
+    const sB = b.type.replace(/^Type-/i, '')
+    const iA = TYPE_ORDER.indexOf(sA)
+    const iB = TYPE_ORDER.indexOf(sB)
+    if (iA !== -1 && iB !== -1) return iA - iB
+    if (iA !== -1) return -1
+    if (iB !== -1) return 1
+    return a.type.localeCompare(b.type)
+  })
+}
+
 export default function Dashboard() {
   const {
     stats, quarters, allotments, employees, keys,
@@ -45,7 +65,7 @@ export default function Dashboard() {
   const { auditUser } = useAuth()
   const navigate = useNavigate()
 
-  const [typeModal,  setTypeModal]  = useState(null)   // { type, mode:'vacant'|'occupied' }
+  const [typeModal,  setTypeModal]  = useState(null)
   const [allotModal, setAllotModal] = useState(false)
   const [allotForm,  setAllotForm]  = useState(emptyForm())
   const [saving,     setSaving]     = useState(false)
@@ -57,15 +77,20 @@ export default function Dashboard() {
   const occupancyPct     = stats.total ? Math.round(stats.occupied / stats.total * 100) : 0
   const today            = new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
 
-  // Per-type: occ + vac counts
-  const typeStats = useMemo(() =>
-    Object.entries(stats.byType)
-      .map(([type, total]) => {
-        const occ = quarters.filter(q => q.Type === type && q.Status === 'Occupied').length
-        return { type, total, occ, vac: total - occ }
-      })
-      .sort((a, b) => b.total - a.total)
-  , [stats.byType, quarters])
+  // Per-type stats, canonical order
+  const typeStats = useMemo(() => sortTypes(
+    Object.entries(stats.byType).map(([type, total]) => {
+      const occ = quarters.filter(q => q.Type === type && q.Status === 'Occupied').length
+      return { type, total, occ, vac: total - occ }
+    })
+  ), [stats.byType, quarters])
+
+  // Colour index stable by canonical order
+  const typeGradient = (type) => {
+    const suffix = type.replace(/^Type-/i, '')
+    const i = TYPE_ORDER.indexOf(suffix)
+    return TYPE_GRADIENTS[i !== -1 ? i : TYPE_ORDER.length + typeStats.findIndex(t => t.type === type)]
+  }
 
   // Org stats
   const orgStats = useMemo(() => {
@@ -141,48 +166,48 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="px-4 -mt-5 space-y-5">
+      <div className="px-4 -mt-5 space-y-4">
 
-        {/* ── 2×2 Summary stat cards ───────────────────────── */}
-        <div className="grid grid-cols-2 gap-2">
-          <StatCard icon={Building2}   label="Total Quarters" value={stats.total}    accent="bg-blue-500"    iconBg="bg-blue-50"    iconColor="text-blue-600"    onClick={() => navigate('/quarters')} />
-          <StatCard icon={CheckCircle} label="Occupied"       value={stats.occupied} accent="bg-emerald-500" iconBg="bg-emerald-50" iconColor="text-emerald-600" onClick={() => navigate('/quarters?status=Occupied')} />
-          <StatCard icon={XCircle}     label="Vacant"         value={stats.vacant}   accent="bg-rose-500"   iconBg="bg-rose-50"   iconColor="text-rose-600"   onClick={() => navigate('/quarters?status=Vacant')} />
-          <StatCard icon={Wrench}      label="Under Repair"   value={stats.repair}   accent="bg-amber-500"  iconBg="bg-amber-50"  iconColor="text-amber-600"  onClick={() => navigate('/quarters?status=Under Repair')} />
+        {/* ── 4 summary cards — single row ─────────────────── */}
+        <div className="grid grid-cols-4 gap-2">
+          <StatCard icon={Building2}   label="Total"    value={stats.total}    accent="bg-blue-500"    iconBg="bg-blue-50"    iconColor="text-blue-600"    onClick={() => navigate('/quarters')} />
+          <StatCard icon={CheckCircle} label="Occupied" value={stats.occupied} accent="bg-emerald-500" iconBg="bg-emerald-50" iconColor="text-emerald-600" onClick={() => navigate('/quarters?status=Occupied')} />
+          <StatCard icon={XCircle}     label="Vacant"   value={stats.vacant}   accent="bg-rose-500"   iconBg="bg-rose-50"   iconColor="text-rose-600"   onClick={() => navigate('/quarters?status=Vacant')} />
+          <StatCard icon={Wrench}      label="Repair"   value={stats.repair}   accent="bg-amber-500"  iconBg="bg-amber-50"  iconColor="text-amber-600"  onClick={() => navigate('/quarters?status=Under Repair')} />
         </div>
 
-        {/* ── Quarter type cards (horizontal scroll) ───────── */}
+        {/* ── Quarter type cards — sorted grid, no scroll ───── */}
         {typeStats.length > 0 && (
           <div>
             <SectionLabel>Quarter Types</SectionLabel>
-            <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              {typeStats.map(({ type, total, occ, vac }, idx) => {
-                const pct  = total ? Math.round(occ / total * 100) : 0
-                const grad = TYPE_GRADIENTS[idx % TYPE_GRADIENTS.length]
+            <div className="grid grid-cols-3 gap-2">
+              {typeStats.map(({ type, total, occ, vac }) => {
+                const pct    = total ? Math.round(occ / total * 100) : 0
+                const grad   = typeGradient(type)
+                const suffix = type.replace(/^Type-/i, '')
                 return (
-                  <div key={type} className={`flex-shrink-0 bg-gradient-to-br ${grad} rounded-2xl p-3.5 min-w-[120px] text-white`}>
-                    <p className="text-[9px] font-bold uppercase tracking-widest opacity-60">{type}</p>
-                    <p className="text-2xl font-extrabold leading-none mt-1.5">{total}</p>
-                    <p className="text-[9px] opacity-50 mt-0.5">total · {pct}% occ</p>
-                    {/* Two-tone mini bar */}
-                    <div className="w-full bg-white/20 rounded-full h-1 mt-2 overflow-hidden">
+                  <div key={type} className={`bg-gradient-to-br ${grad} rounded-xl p-2.5 text-white`}>
+                    <p className="text-[10px] font-extrabold tracking-widest opacity-70 uppercase">Type {suffix}</p>
+                    <p className="text-xl font-extrabold leading-none mt-1">{total}</p>
+                    {/* Two-tone bar */}
+                    <div className="w-full bg-white/20 rounded-full h-0.5 mt-1.5 overflow-hidden">
                       <div className="h-full bg-white/70 rounded-full" style={{ width: `${pct}%` }} />
                     </div>
-                    {/* Clickable occ / vac chips */}
-                    <div className="flex gap-1.5 mt-2.5">
+                    {/* Occ / Vac tap targets */}
+                    <div className="flex gap-1 mt-2">
                       <button
                         onClick={() => setTypeModal({ type, mode: 'occupied' })}
                         className="flex-1 bg-white/20 hover:bg-white/30 active:bg-white/40 rounded-lg py-1 text-center transition-colors"
                       >
-                        <p className="text-[11px] font-extrabold">{occ}</p>
-                        <p className="text-[8px] opacity-70 uppercase tracking-wide">Occ</p>
+                        <p className="text-[11px] font-extrabold leading-none">{occ}</p>
+                        <p className="text-[7px] opacity-60 uppercase mt-0.5">Occ</p>
                       </button>
                       <button
                         onClick={() => setTypeModal({ type, mode: 'vacant' })}
                         className="flex-1 bg-white/20 hover:bg-white/30 active:bg-white/40 rounded-lg py-1 text-center transition-colors"
                       >
-                        <p className="text-[11px] font-extrabold">{vac}</p>
-                        <p className="text-[8px] opacity-70 uppercase tracking-wide">Vac</p>
+                        <p className="text-[11px] font-extrabold leading-none">{vac}</p>
+                        <p className="text-[7px] opacity-60 uppercase mt-0.5">Vac</p>
                       </button>
                     </div>
                   </div>
@@ -192,49 +217,48 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── Vacant quarters — type-wise summary card ─────── */}
+        {/* ── Vacant quarters — type-wise summary ──────────── */}
         {typeStats.some(t => t.vac > 0) && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-bold text-slate-800">Vacant Quarters by Type</p>
-                <p className="text-xs text-slate-400 mt-0.5">{stats.vacant} total vacant</p>
-              </div>
-              <span className="text-2xl font-extrabold text-rose-500">{stats.vacant}</span>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-sm font-bold text-slate-800">Vacant by Type</p>
+              <span className="text-lg font-extrabold text-rose-500">{stats.vacant}</span>
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-4 gap-1.5">
               {typeStats
                 .filter(t => t.vac > 0)
-                .sort((a, b) => b.vac - a.vac)
-                .map(({ type, vac, total }) => (
-                  <button
-                    key={type}
-                    onClick={() => setTypeModal({ type, mode: 'vacant' })}
-                    className="bg-rose-50 border border-rose-100 rounded-xl px-2 py-2.5 text-center active:bg-rose-100 transition-colors"
-                  >
-                    <p className="text-[9px] text-rose-400 font-bold uppercase tracking-wide truncate">{type}</p>
-                    <p className="text-xl font-extrabold text-rose-600 leading-none mt-0.5">{vac}</p>
-                    <p className="text-[8px] text-rose-300 mt-0.5">of {total}</p>
-                  </button>
-                ))
+                .map(({ type, vac, total }) => {
+                  const suffix = type.replace(/^Type-/i, '')
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setTypeModal({ type, mode: 'vacant' })}
+                      className="bg-rose-50 border border-rose-100 rounded-lg px-1 py-2 text-center active:bg-rose-100 transition-colors"
+                    >
+                      <p className="text-[8px] text-rose-400 font-bold uppercase tracking-wide truncate">{suffix}</p>
+                      <p className="text-base font-extrabold text-rose-600 leading-none mt-0.5">{vac}</p>
+                      <p className="text-[7px] text-rose-300 mt-0.5">/{total}</p>
+                    </button>
+                  )
+                })
               }
             </div>
           </div>
         )}
 
-        {/* ── Organisation-wise cards (horizontal scroll) ───── */}
+        {/* ── Organisation cards (horizontal scroll) ────────── */}
         {orgStats.length > 0 && (
           <div>
             <SectionLabel>By Organisation</SectionLabel>
-            <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+            <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
               {orgStats.map(([dept, count]) => {
                 const grad = ORG_PALETTE[dept] || 'from-slate-400 to-slate-600'
                 const pct  = stats.occupied ? Math.round(count / stats.occupied * 100) : 0
                 return (
-                  <div key={dept} className={`flex-shrink-0 bg-gradient-to-br ${grad} rounded-2xl px-4 py-3 min-w-[96px] text-white`}>
+                  <div key={dept} className={`flex-shrink-0 bg-gradient-to-br ${grad} rounded-xl px-3.5 py-3 min-w-[88px] text-white`}>
                     <p className="text-[9px] font-bold uppercase tracking-widest opacity-70">{dept}</p>
-                    <p className="text-2xl font-extrabold leading-none mt-1">{count}</p>
-                    <p className="text-[9px] opacity-55 mt-0.5">{pct}% of occupied</p>
+                    <p className="text-xl font-extrabold leading-none mt-1">{count}</p>
+                    <p className="text-[9px] opacity-55 mt-0.5">{pct}% of occ</p>
                   </div>
                 )
               })}
@@ -253,7 +277,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── Occupancy bar ────────────────────────────────── */}
+        {/* ── Overall occupancy bar ────────────────────────── */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-1.5">
@@ -301,7 +325,7 @@ export default function Dashboard() {
             </div>
             <div>
               <p className="text-sm font-semibold text-amber-900">{overdueKeys.length} Key{overdueKeys.length > 1 ? 's' : ''} Overdue</p>
-              <p className="text-xs text-amber-700 mt-0.5">Keys held for more than 30 days</p>
+              <p className="text-xs text-amber-700 mt-0.5">Held for more than 30 days</p>
               <button onClick={() => navigate('/keys')} className="mt-1.5 text-xs font-semibold text-amber-700 flex items-center gap-1">
                 View Keys <ArrowRight className="w-3 h-3" />
               </button>
@@ -340,7 +364,7 @@ export default function Dashboard() {
 
       </div>
 
-      {/* ── Type detail modal ────────────────────────────────── */}
+      {/* ── Type detail modal ─────────────────────────────── */}
       <Modal
         open={!!typeModal && !allotModal}
         onClose={() => setTypeModal(null)}
@@ -393,7 +417,7 @@ export default function Dashboard() {
         )}
       </Modal>
 
-      {/* ── New Allotment modal (from type vacant) ───────────── */}
+      {/* ── New Allotment modal ───────────────────────────── */}
       <Modal
         open={allotModal}
         onClose={() => { setAllotModal(false); setAllotForm(emptyForm()) }}
@@ -454,23 +478,21 @@ export default function Dashboard() {
 /* ── Sub-components ──────────────────────────────────────── */
 
 function SectionLabel({ children }) {
-  return (
-    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{children}</p>
-  )
+  return <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{children}</p>
 }
 
 function StatCard({ icon: Icon, label, value, accent, iconBg, iconColor, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="bg-white rounded-xl shadow-sm border border-slate-100 p-3 text-left active:scale-95 transition-transform overflow-hidden relative"
+      className="bg-white rounded-xl shadow-sm border border-slate-100 p-2.5 text-left active:scale-95 transition-transform overflow-hidden relative"
     >
       <div className={`absolute top-0 left-0 right-0 h-0.5 ${accent}`} />
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center mb-2 ${iconBg}`}>
-        <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
+      <div className={`w-6 h-6 rounded-md flex items-center justify-center mb-1.5 ${iconBg}`}>
+        <Icon className={`w-3 h-3 ${iconColor}`} />
       </div>
-      <p className="text-xl font-bold text-slate-800 leading-none">{value ?? '—'}</p>
-      <p className="text-[11px] text-slate-600 font-medium mt-1">{label}</p>
+      <p className="text-lg font-extrabold text-slate-800 leading-none">{value ?? '—'}</p>
+      <p className="text-[10px] text-slate-600 font-medium mt-0.5 leading-tight">{label}</p>
     </button>
   )
 }
