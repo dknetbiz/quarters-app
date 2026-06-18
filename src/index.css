@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { -webkit-tap-highlight-color: transparent; }
+  body { @apply bg-slate-50 text-slate-800 font-sans; }
+}
+
+@layer components {
+  .card { @apply bg-white rounded-2xl shadow-sm border border-slate-100 p-4; }
+  .btn-primary { @apply bg-brand-700 text-white px-4 py-2.5 rounded-xl font-medium text-sm active:bg-brand-800 transition-colors; }
+  .btn-secondary { @apply bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl font-medium text-sm active:bg-slate-200 transition-colors; }
+  .btn-danger { @apply bg-red-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm active:bg-red-700 transition-colors; }
+  .input { @apply w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white; }
+  .label { @apply block text-xs font-medium text-slate-500 mb-1.5 uppercase tracking-wide; }
+  .badge-occupied { @apply bg-emerald-100 text-emerald-700 text-xs font-medium px-2 py-0.5 rounded-full; }
+  .badge-vacant { @apply bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full; }
+  .badge-repair { @apply bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full; }
+  .stat-card { @apply card flex flex-col gap-1; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.animate-slide-up { animation: slide-up 0.25s ease-out; }
