@@ -435,7 +435,7 @@ function NewOrderForm({ quarters, employees, orders, allotments, auditUser, onCr
           <label className="label">Employee *</label>
           <select className="input" value={form.emp_id} onChange={f('emp_id')}>
             <option value="">Select employee</option>
-            {activeEmployees.map(e => <option key={e.Emp_ID} value={e.Emp_ID}>{e.Name} · {e.Designation} · {e.Department}</option>)}
+            {activeEmployees.map(e => <option key={e.Emp_ID} value={e.Emp_ID}>{e.Emp_No ? `[${e.Emp_No}] ` : ''}{e.Name} · {e.Designation} · {e.Department}</option>)}
           </select>
           <div className="mt-2">
             <label className="label">SJVN Unit</label>
@@ -782,7 +782,7 @@ function generateOrderPage(o, orderNo, date) {
   const qtr = o.qtr || {}
   const isAgency = o.Allottee_Category === 'Outside Agency' || o.Allottee_Category === 'Apprentice / Trainee'
   const allotteeName = isAgency ? (o.Entity_Name || '—') : (emp.Name || o.Emp_ID || '—')
-  const empNo        = isAgency ? '—' : (o.Emp_ID || '—')
+  const empNo        = isAgency ? '—' : (emp.Emp_No || o.Emp_ID || '—')
   const designation  = isAgency ? (o.Entity_Type || o.Allottee_Category || '—') : (emp.Designation || '—')
   const department   = isAgency ? (o.SJVN_Unit || 'NJHPS') : (emp.Department || 'NJHPS')
   const qtrTypeNo    = qtr.Type ? `${qtr.Type}, ${qtr.Quarter_No || o.Quarter_ID}` : (qtr.Quarter_No || o.Quarter_ID || '—')

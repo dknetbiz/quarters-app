@@ -25,7 +25,7 @@ export default function EmployeesPage() {
   const [sortDir,      setSortDir]      = useState('asc')
   const [page,         setPage]         = useState(1)
 
-  const emptyForm = { name:'', designation:'', department:'NJHPS', category:'General', grade_level:'', seniority_date:'', active:'TRUE' }
+  const emptyForm = { name:'', designation:'', department:'NJHPS', category:'General', grade_level:'', seniority_date:'', emp_no:'', active:'TRUE' }
   const [form, setForm] = useState(emptyForm)
 
   function toggleSort(key) {
@@ -102,6 +102,7 @@ export default function EmployeesPage() {
         Category:       form.category,
         Grade_Level:    form.grade_level,
         Seniority_Date: form.seniority_date,
+        Emp_No:         form.emp_no,
         Active:         form.active,
       }
       await updateEmployee(selected._rowIndex, updated, selected, auditUser)
@@ -127,6 +128,7 @@ export default function EmployeesPage() {
       category:       emp.Category   || 'General',
       grade_level:    emp.Grade_Level    || '',
       seniority_date: emp.Seniority_Date || '',
+      emp_no:         emp.Emp_No || '',
       active:         emp.Active,
     })
   }
@@ -201,7 +203,9 @@ export default function EmployeesPage() {
                     <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{rowNum}</td>
                     <td className="px-3 py-2.5">
                       <p className="font-semibold text-slate-800 whitespace-nowrap">{emp.Name}</p>
-                      <p className="text-[11px] text-slate-400 font-mono">{emp.Emp_ID}</p>
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        {emp.Emp_No ? `#${emp.Emp_No}` : emp.Emp_ID}
+                      </p>
                     </td>
                     <td className="px-3 py-2.5 text-xs text-slate-600 whitespace-nowrap">{emp.Designation || '—'}</td>
                     <td className="px-3 py-2.5 text-xs text-slate-600 whitespace-nowrap">{emp.Department || '—'}</td>
@@ -309,9 +313,15 @@ function EmployeeForm({ form, setForm }) {
   const entitled = getEntitledGroup(form.grade_level)
   return (
     <div className="space-y-3">
-      <div>
-        <label className="label">Full Name *</label>
-        <input className="input" value={form.name} onChange={f('name')} placeholder="e.g. Ram Kumar" />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label">Full Name *</label>
+          <input className="input" value={form.name} onChange={f('name')} placeholder="e.g. Ram Kumar" />
+        </div>
+        <div>
+          <label className="label">Employee No.</label>
+          <input className="input font-mono" value={form.emp_no} onChange={f('emp_no')} placeholder="e.g. 12345" />
+        </div>
       </div>
       <div>
         <label className="label">Designation *</label>

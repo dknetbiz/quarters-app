@@ -298,7 +298,7 @@ export default function AllotmentsPage() {
             </div>
             <select className="input" value={form.emp_id} onChange={f('emp_id')}>
               <option value="">Select employee</option>
-              {activeEmp.map(e => <option key={e.Emp_ID} value={e.Emp_ID}>{e.Name} · {e.Designation} · {e.Department}</option>)}
+              {activeEmp.map(e => <option key={e.Emp_ID} value={e.Emp_ID}>{e.Emp_No ? `[${e.Emp_No}] ` : ''}{e.Name} · {e.Designation} · {e.Department}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">

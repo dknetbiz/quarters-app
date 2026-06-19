@@ -105,7 +105,7 @@ async function createSheetTab(title) {
 export async function initializeSheetHeaders() {
   const headers = {
     [SHEETS.QUARTERS]:     ['Quarter_ID','Quarter_No','Type','Block','Location','Status','Remarks'],
-    [SHEETS.EMPLOYEES]:    ['Emp_ID','Name','Designation','Department','Category','Active','Grade_Level','Seniority_Date'],
+    [SHEETS.EMPLOYEES]:    ['Emp_ID','Name','Designation','Department','Category','Active','Grade_Level','Seniority_Date','Emp_No'],
     [SHEETS.ALLOTMENTS]:   ['Allotment_ID','Quarter_ID','Emp_ID','Allotment_Date','Allotment_Type','Rent','Vacated_Date','Status','Remarks'],
     [SHEETS.KEY_REGISTER]: ['Key_ID','Quarter_ID','Held_By','Issued_Date','Returned_Date','Status','Remarks'],
     [SHEETS.RENT]:         ['Rent_ID','Allotment_ID','Quarter_ID','Emp_ID','Month','Standard_Rent','Actual_Recovery','Difference','Remarks'],
@@ -168,7 +168,7 @@ export async function getAllEmployees() {
 
 export async function addEmployee(data, user) {
   const id = generateId('EMP')
-  const row = [id, data.name, data.designation, data.department, data.category, 'TRUE', data.grade_level || '', data.seniority_date || '']
+  const row = [id, data.name, data.designation, data.department, data.category, 'TRUE', data.grade_level || '', data.seniority_date || '', data.emp_no || '']
   await appendRow(SHEETS.EMPLOYEES, row)
   await writeAuditLog({ ...user, action: 'ADD_EMPLOYEE', module: 'Employees', recordId: id, newValue: data })
   return id
@@ -177,7 +177,7 @@ export async function addEmployee(data, user) {
 export async function updateEmployee(rowIndex, data, oldData, user) {
   const row = [
     data.Emp_ID, data.Name, data.Designation, data.Department,
-    data.Category, data.Active, data.Grade_Level || '', data.Seniority_Date || ''
+    data.Category, data.Active, data.Grade_Level || '', data.Seniority_Date || '', data.Emp_No || ''
   ]
   await updateRow(SHEETS.EMPLOYEES, rowIndex, row)
   await writeAuditLog({ ...user, action: 'UPDATE_EMPLOYEE', module: 'Employees', recordId: data.Emp_ID, oldValue: oldData, newValue: data })
