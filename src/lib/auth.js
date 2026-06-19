@@ -1,9 +1,11 @@
 import { CONFIG } from './constants'
 
-let tokenClient = null
-let accessToken = null
+let tokenClient  = null
+let accessToken  = null
+let pendingRefresh = null   // dedup simultaneous refresh calls
+let refreshTimer = null
 
-// Load Google Identity Services script
+// ─── Load Google Identity Services ────────────────────────────
 export function loadGoogleAuth() {
   return new Promise((resolve, reject) => {
     if (window.google?.accounts) { resolve(); return }
@@ -15,40 +17,72 @@ export function loadGoogleAuth() {
   })
 }
 
-// Initialize token client for OAuth
+// ─── Schedule proactive silent refresh ────────────────────────
+function scheduleRefresh(expiresIn) {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  // Refresh 5 minutes before the token expires
+  const delay = Math.max(0, (expiresIn - 300)) * 1000
+  refreshTimer = setTimeout(() => {
+    silentRefresh().catch(() => {})   // best-effort; user will be prompted if it fails
+  }, delay)
+}
+
+// ─── Save token to session ─────────────────────────────────────
+function storeToken(response) {
+  accessToken = response.access_token
+  const expiry = Date.now() + (response.expires_in * 1000)
+  sessionStorage.setItem('gauth_token',  accessToken)
+  sessionStorage.setItem('gauth_expiry', expiry.toString())
+  scheduleRefresh(response.expires_in)
+}
+
+// ─── Initialize token client ───────────────────────────────────
 export function initTokenClient(onSuccess, onError) {
   tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.GOOGLE_CLIENT_ID,
     scope: CONFIG.SCOPES,
     callback: (response) => {
       if (response.error) { onError(response.error); return }
-      accessToken = response.access_token
-      // Store token expiry
-      const expiry = Date.now() + (response.expires_in * 1000)
-      sessionStorage.setItem('gauth_token', accessToken)
-      sessionStorage.setItem('gauth_expiry', expiry)
+      storeToken(response)
       onSuccess(response)
     }
   })
 }
 
-// Request access token (shows Google popup)
+// ─── Interactive login (shows Google popup) ───────────────────
 export function requestToken() {
   return new Promise((resolve, reject) => {
     if (!tokenClient) { reject(new Error('Token client not initialized')); return }
     tokenClient.callback = (response) => {
-      if (response.error) { reject(response.error); return }
-      accessToken = response.access_token
-      const expiry = Date.now() + (response.expires_in * 1000)
-      sessionStorage.setItem('gauth_token', accessToken)
-      sessionStorage.setItem('gauth_expiry', expiry)
+      if (response.error) { reject(new Error(response.error)); return }
+      storeToken(response)
       resolve(response)
     }
     tokenClient.requestAccessToken({ prompt: 'consent' })
   })
 }
 
-// Get current valid token
+// ─── Silent refresh (no UI, reuses existing consent) ──────────
+export function silentRefresh() {
+  if (pendingRefresh) return pendingRefresh     // don't stack concurrent refreshes
+  pendingRefresh = new Promise((resolve, reject) => {
+    if (!tokenClient) {
+      pendingRefresh = null
+      reject(new Error('NOT_INITIALIZED'))
+      return
+    }
+    tokenClient.callback = (response) => {
+      pendingRefresh = null
+      if (response.error) { reject(new Error(response.error)); return }
+      storeToken(response)
+      resolve(response.access_token)
+    }
+    tokenClient.requestAccessToken({ prompt: '' })  // empty = silent if already consented
+  })
+  return pendingRefresh
+}
+
+// ─── Get current valid token ───────────────────────────────────
 export function getToken() {
   const stored = sessionStorage.getItem('gauth_token')
   const expiry = sessionStorage.getItem('gauth_expiry')
@@ -59,19 +93,20 @@ export function getToken() {
   return null
 }
 
-// Revoke token (logout)
+// ─── Revoke token (logout) ────────────────────────────────────
 export function revokeToken() {
   const token = getToken()
+  if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null }
   if (token) {
     window.google?.accounts.oauth2.revoke(token)
-    sessionStorage.removeItem('gauth_token')
-    sessionStorage.removeItem('gauth_expiry')
-    sessionStorage.removeItem('user_info')
-    accessToken = null
   }
+  sessionStorage.removeItem('gauth_token')
+  sessionStorage.removeItem('gauth_expiry')
+  sessionStorage.removeItem('user_info')
+  accessToken = null
 }
 
-// Get user info from Google
+// ─── User info ────────────────────────────────────────────────
 export async function getUserInfo(token) {
   const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
     headers: { Authorization: `Bearer ${token}` }
@@ -81,7 +116,6 @@ export async function getUserInfo(token) {
   return data
 }
 
-// Get stored user info
 export function getStoredUser() {
   const info = sessionStorage.getItem('user_info')
   return info ? JSON.parse(info) : null

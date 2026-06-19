@@ -1,12 +1,21 @@
 import { CONFIG, SHEETS, COLS } from './constants'
-import { getToken } from './auth'
+import { getToken, silentRefresh } from './auth'
 
 const BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 
 // ─── Core fetch wrapper ───────────────────────────────────────
-async function sheetsRequest(path, options = {}) {
-  const token = getToken()
-  if (!token) throw new Error('NOT_AUTHENTICATED')
+async function sheetsRequest(path, options = {}, _retry = false) {
+  let token = getToken()
+
+  if (!token) {
+    if (_retry) throw new Error('NOT_AUTHENTICATED')
+    // Token expired — attempt silent refresh before giving up
+    try {
+      token = await silentRefresh()
+    } catch {
+      throw new Error('NOT_AUTHENTICATED')
+    }
+  }
 
   const url = `${BASE}/${CONFIG.SPREADSHEET_ID}${path}`
   const res = await fetch(url, {
@@ -17,6 +26,13 @@ async function sheetsRequest(path, options = {}) {
       ...options.headers
     }
   })
+
+  // Token rejected by Google — try once more after silent refresh
+  if (res.status === 401 && !_retry) {
+    try { await silentRefresh() } catch { throw new Error('NOT_AUTHENTICATED') }
+    return sheetsRequest(path, options, true)
+  }
+
   if (!res.ok) {
     const err = await res.json()
     throw new Error(err.error?.message || 'Sheets API error')

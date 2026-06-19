@@ -12,7 +12,24 @@ import RentPage from './pages/RentPage'
 import ReportsPage from './pages/ReportsPage'
 import BulkUploadPage from './pages/BulkUploadPage'
 import EmployeesPage from './pages/EmployeesPage'
-import { ShieldOff } from 'lucide-react'
+import { ShieldOff, RefreshCw } from 'lucide-react'
+
+function SessionExpiredScreen({ login }) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-brand-800 to-brand-900 flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-sm text-center">
+        <div className="w-16 h-16 bg-amber-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <RefreshCw className="w-8 h-8 text-amber-300" />
+        </div>
+        <h1 className="text-xl font-bold text-white mb-2">Session Expired</h1>
+        <p className="text-brand-200 text-sm mb-6">Your Google session has expired. Sign in again to continue.</p>
+        <button onClick={login} className="bg-white text-brand-800 text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors hover:bg-brand-50">
+          Sign in again
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function AccessDeniedScreen({ user, logout }) {
   return (
@@ -38,7 +55,7 @@ function AccessDeniedScreen({ user, logout }) {
 
 function DataRoutes() {
   const { error, loadingData } = useData()
-  const { user, logout } = useAuth()
+  const { user, logout, login } = useAuth()
 
   if (loadingData) {
     return (
@@ -46,6 +63,10 @@ function DataRoutes() {
         <div className="w-10 h-10 border-2 border-white border-t-transparent rounded-full animate-spin" />
       </div>
     )
+  }
+
+  if (error === 'SESSION_EXPIRED') {
+    return <SessionExpiredScreen login={login} />
   }
 
   if (error === 'ACCESS_DENIED') {
