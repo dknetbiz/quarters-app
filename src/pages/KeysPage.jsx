@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Key, Plus, Search, AlertTriangle, RotateCcw, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { Key, Plus, Search, AlertTriangle, RotateCcw, Eye, ChevronsUpDown, ChevronUp, ChevronDown, Filter } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { issueKey, returnKey } from '../lib/googleSheets'
-import Modal from '../components/Modal'
+import Modal, { ModalSection, FieldRow } from '../components/Modal'
+import { LOCATIONS, QUARTER_TYPES } from '../lib/constants'
 
 export default function KeysPage() {
   const { keys, quarters, refreshKeys, fetchAll, lastFetched } = useData()
@@ -12,11 +13,15 @@ export default function KeysPage() {
   const [search,      setSearch]      = useState('')
   const [tab,         setTab]         = useState('issued')
   const [showNew,     setShowNew]     = useState(false)
+  const [showFilter,  setShowFilter]  = useState(false)
   const [selected,    setSelected]    = useState(null)
   const [saving,      setSaving]      = useState(false)
   const [returnDate,  setReturnDate]  = useState(today())
   const [sortKey,     setSortKey]     = useState(null)
   const [sortDir,     setSortDir]     = useState('asc')
+  const [filterLoc,   setFilterLoc]   = useState('')
+  const [filterQType, setFilterQType] = useState('')
+  const [filterOverdue, setFilterOverdue] = useState(false)
 
   const emptyForm = { quarter_id:'', held_by:'', issued_date: today(), remarks:'' }
   const [form, setForm] = useState(emptyForm)
@@ -41,15 +46,18 @@ export default function KeysPage() {
     }))
   }, [keys, quarters, tab])
 
+  const activeFilterCount = [filterLoc, filterQType, filterOverdue ? 'y' : ''].filter(Boolean).length
+
   const filtered = useMemo(() => {
     const s = search.toLowerCase()
-    if (!s) return baseList
-    return baseList.filter(k =>
-      k.Quarter_ID?.toLowerCase().includes(s) ||
-      k.Held_By?.toLowerCase().includes(s) ||
-      k.qtr?.Quarter_No?.toLowerCase().includes(s)
-    )
-  }, [baseList, search])
+    return baseList.filter(k => {
+      if (s && !(k.Quarter_ID?.toLowerCase().includes(s) || k.Held_By?.toLowerCase().includes(s) || k.qtr?.Quarter_No?.toLowerCase().includes(s))) return false
+      if (filterLoc   && k.qtr?.Location !== filterLoc)  return false
+      if (filterQType && k.qtr?.Type     !== filterQType) return false
+      if (filterOverdue && k.days <= 30) return false
+      return true
+    })
+  }, [baseList, search, filterLoc, filterQType, filterOverdue])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -104,6 +112,10 @@ export default function KeysPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input className="input pl-9" placeholder="Search by quarter or holder…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <button onClick={() => setShowFilter(true)} className={`relative w-10 h-10 flex items-center justify-center rounded-xl border ${activeFilterCount ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white'}`}>
+          <Filter className={`w-4 h-4 ${activeFilterCount ? 'text-brand-600' : 'text-slate-500'}`} />
+          {activeFilterCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-600 text-white text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>}
+        </button>
         <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5">
           <Plus className="w-4 h-4" /> Issue Key
         </button>
@@ -172,8 +184,41 @@ export default function KeysPage() {
         </div>
       </div>
 
+      {/* ── Filter Modal ── */}
+      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Keys" icon={Filter} variant="info" size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="label">Location</label>
+            <select className="input" value={filterLoc} onChange={e => setFilterLoc(e.target.value)}>
+              <option value="">All Locations</option>
+              {LOCATIONS.map(l => <option key={l}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Quarter Type</label>
+            <select className="input" value={filterQType} onChange={e => setFilterQType(e.target.value)}>
+              <option value="">All Types</option>
+              {QUARTER_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Show Only</label>
+            <button onClick={() => setFilterOverdue(v => !v)}
+              className={`w-full py-2.5 rounded-xl border text-sm font-semibold transition-colors ${filterOverdue ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+              {filterOverdue ? '✓ Overdue Only (>30 days)' : 'Overdue Only (>30 days)'}
+            </button>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button className="btn-secondary flex-1" onClick={() => { setFilterLoc(''); setFilterQType(''); setFilterOverdue(false); setShowFilter(false) }}>Clear All</button>
+            <button className="btn-primary flex-1" onClick={() => setShowFilter(false)}>Apply</button>
+          </div>
+        </div>
+      </Modal>
+
       {/* ── Issue Key Modal ── */}
-      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="Issue Key">
+      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="Issue Key" icon={Key} variant="info" size="sm"
+        footer={<div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button><button className="btn-primary flex-1" onClick={handleIssue} disabled={saving}>{saving ? 'Saving…' : 'Issue Key'}</button></div>}
+      >
         <div className="space-y-3">
           <div>
             <label className="label">Quarter *</label>
@@ -195,49 +240,53 @@ export default function KeysPage() {
             <input className="input" placeholder="Optional" value={form.remarks} onChange={f('remarks')} />
           </div>
         </div>
-        <div className="flex gap-2 mt-4">
-          <button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleIssue} disabled={saving}>{saving ? 'Saving…' : 'Issue Key'}</button>
-        </div>
       </Modal>
 
       {/* ── Detail / Return Modal ── */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Key Details">
-        {selected && (() => {
-          const qtr = selected.qtr
-          return (
-            <div className="space-y-3">
-              <div className="bg-slate-50 rounded-xl overflow-hidden">
-                {[
-                  ['Quarter',  qtr?.Quarter_No || selected.Quarter_ID],
-                  ['Type',     qtr?.Type || '—'],
-                  ['Held By',  selected.Held_By],
-                  ['Issued',   selected.Issued_Date],
-                  ['Days',     selected.days > 0 ? `${selected.days} days` : '—'],
-                  ['Returned', selected.Returned_Date || '—'],
-                  ['Status',   selected.Status],
-                  selected.Remarks && ['Remarks', selected.Remarks],
-                ].filter(Boolean).map(([l, v], i) => (
-                  <div key={i} className={`flex justify-between gap-4 px-3 py-2 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
-                    <span className="text-xs text-slate-400 font-medium">{l}</span>
-                    <span className="text-xs text-slate-700 font-semibold text-right">{v || '—'}</span>
-                  </div>
-                ))}
+      {selected && (
+        <Modal
+          open={!!selected} onClose={() => setSelected(null)}
+          title={selected.qtr?.Quarter_No || selected.Quarter_ID}
+          icon={Key}
+          subtitle={selected.qtr ? `${selected.qtr.Type} · ${selected.qtr.Location}` : undefined}
+          badge={selected.days > 30
+            ? { label: 'Overdue', cls: 'bg-amber-300/30 text-amber-100' }
+            : selected.Status === 'Issued'
+              ? { label: 'Issued',   cls: 'bg-blue-300/30 text-blue-100' }
+              : { label: 'Returned', cls: 'bg-slate-300/30 text-slate-100' }}
+          variant={selected.days > 30 ? 'warning' : 'default'}
+          size="sm"
+          footer={selected.Status === 'Issued' ? (
+            <div className="space-y-2">
+              <div>
+                <label className="label">Return Date</label>
+                <input className="input" type="date" value={returnDate} onChange={e => setReturnDate(e.target.value)} />
               </div>
-              {selected.Status === 'Issued' && (
-                <div className="pt-2 border-t border-slate-100">
-                  <label className="label">Return Date</label>
-                  <input className="input" type="date" value={returnDate} onChange={e => setReturnDate(e.target.value)} />
-                  <button className="btn-primary w-full mt-3 flex items-center justify-center gap-2" onClick={handleReturn} disabled={saving}>
-                    <RotateCcw className="w-4 h-4" />
-                    {saving ? 'Processing…' : 'Mark as Returned'}
-                  </button>
-                </div>
-              )}
+              <button className="btn-primary w-full flex items-center justify-center gap-2" onClick={handleReturn} disabled={saving}>
+                <RotateCcw className="w-4 h-4" />{saving ? 'Processing…' : 'Mark as Returned'}
+              </button>
             </div>
-          )
-        })()}
-      </Modal>
+          ) : null}
+        >
+          <ModalSection title="Key Details">
+            <FieldRow label="Quarter"   value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
+            <FieldRow label="Type"      value={selected.qtr?.Type} />
+            <FieldRow label="Location"  value={selected.qtr?.Location} />
+            <FieldRow label="Held By"   value={selected.Held_By} last />
+          </ModalSection>
+          <ModalSection title="Timeline">
+            <FieldRow label="Issued On" value={selected.Issued_Date} />
+            <FieldRow label="Days Held" value={selected.days > 0 ? `${selected.days} days` : '—'}
+              valueClass={selected.days > 30 ? 'text-amber-600 font-bold' : 'text-slate-700'} />
+            <FieldRow label="Returned"  value={selected.Returned_Date || '—'} last />
+          </ModalSection>
+          {selected.Remarks && (
+            <ModalSection title="Remarks">
+              <FieldRow label="Note" value={selected.Remarks} last />
+            </ModalSection>
+          )}
+        </Modal>
+      )}
 
     </div>
   )

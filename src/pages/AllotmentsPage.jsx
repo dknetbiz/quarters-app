@@ -4,7 +4,8 @@ import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { createAllotment, vacateAllotment, addEmployee } from '../lib/googleSheets'
 import { ALLOTMENT_TYPES, CATEGORIES, DEPARTMENTS, QUARTER_TYPES } from '../lib/constants'
-import Modal from '../components/Modal'
+import Modal, { ModalSection, FieldRow } from '../components/Modal'
+import { Building2, User, ClipboardCheck, Calendar } from 'lucide-react'
 
 export default function AllotmentsPage() {
   const { allotments, quarters, employees, refreshAllotments, refreshQuarters, refreshEmployees, fetchAll, lastFetched } = useData()
@@ -204,7 +205,16 @@ export default function AllotmentsPage() {
       </div>
 
       {/* ── New Allotment Modal ── */}
-      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="New Allotment">
+      <Modal
+        open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }}
+        title="New Allotment" icon={ClipboardCheck} variant="success" size="md"
+        footer={
+          <div className="flex gap-2">
+            <button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button>
+            <button className="btn-primary flex-1" onClick={handleCreate} disabled={saving}>{saving ? 'Saving…' : 'Create Allotment'}</button>
+          </div>
+        }
+      >
         <div className="space-y-3">
           <div>
             <label className="label">Quarter (Vacant) *</label>
@@ -244,49 +254,61 @@ export default function AllotmentsPage() {
             <input className="input" placeholder="Optional" value={form.remarks} onChange={f('remarks')} />
           </div>
         </div>
-        <div className="flex gap-2 mt-4">
-          <button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleCreate} disabled={saving}>{saving ? 'Saving…' : 'Create Allotment'}</button>
-        </div>
       </Modal>
 
       {/* ── Detail / Vacate Modal ── */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Allotment Details">
-        {selected && (() => {
-          const emp = selected.emp
-          const qtr = selected.qtr
-          return (
+      {selected && (
+        <Modal
+          open={!!selected} onClose={() => setSelected(null)}
+          title={selected.qtr?.Quarter_No || selected.Quarter_ID}
+          icon={Building2}
+          subtitle={`${selected.qtr?.Type || ''} · ${selected.qtr?.Location || ''}`}
+          badge={selected.Status === 'Active'
+            ? { label: 'Active',  cls: 'bg-emerald-400/30 text-emerald-100' }
+            : { label: 'Vacated', cls: 'bg-slate-300/30 text-slate-100' }}
+          variant={selected.Status === 'Active' ? 'default' : 'default'}
+          size="md"
+          footer={selected.Status === 'Active' ? (
             <div className="space-y-2.5">
-              <DetailGrid rows={[
-                ['Quarter',     qtr?.Quarter_No || selected.Quarter_ID],
-                ['Type',        qtr?.Type || '—'],
-                ['Employee',    emp?.Name || selected.Emp_ID],
-                ['Designation', emp?.Designation || '—'],
-                ['Department',  emp?.Department || '—'],
-                ['Category',    emp?.Category || '—'],
-                ['Allotted On', selected.Allotment_Date],
-                ['Type',        selected.Allotment_Type],
-                ['Rent',        selected.Rent ? `₹${selected.Rent}` : '—'],
-                ['Status',      selected.Status],
-                selected.Vacated_Date && ['Vacated On', selected.Vacated_Date],
-                selected.Remarks && ['Remarks', selected.Remarks],
-              ].filter(Boolean)} />
-              {selected.Status === 'Active' && (
-                <div className="pt-3 border-t border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
                   <label className="label">Vacate Date</label>
                   <input className="input" type="date" value={vacateDate} onChange={e => setVacateDate(e.target.value)} />
-                  <button className="btn-danger w-full mt-3" onClick={handleVacate} disabled={saving}>
-                    {saving ? 'Processing…' : 'Mark as Vacated'}
-                  </button>
                 </div>
-              )}
+              </div>
+              <button className="btn-danger w-full flex items-center justify-center gap-2" onClick={handleVacate} disabled={saving}>
+                {saving ? 'Processing…' : 'Mark as Vacated'}
+              </button>
             </div>
-          )
-        })()}
-      </Modal>
+          ) : null}
+        >
+          <div className="space-y-1">
+            <ModalSection title="Quarter">
+              <FieldRow label="Quarter No." value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
+              <FieldRow label="Type"        value={selected.qtr?.Type} />
+              <FieldRow label="Location"    value={selected.qtr?.Location} />
+              <FieldRow label="Block"       value={selected.qtr?.Block} last />
+            </ModalSection>
+            <ModalSection title="Allottee">
+              <FieldRow label="Name"        value={selected.emp?.Name || selected.Emp_ID} />
+              <FieldRow label="Designation" value={selected.emp?.Designation} />
+              <FieldRow label="Department"  value={selected.emp?.Department} />
+              <FieldRow label="Category"    value={selected.emp?.Category} last />
+            </ModalSection>
+            <ModalSection title="Allotment Details">
+              <FieldRow label="Date"        value={selected.Allotment_Date} />
+              <FieldRow label="Type"        value={selected.Allotment_Type} />
+              <FieldRow label="Rent"        value={selected.Rent ? `₹${Number(selected.Rent).toLocaleString('en-IN')}` : '—'} valueClass="text-emerald-700" />
+              <FieldRow label="Status"      value={selected.Status} valueClass={selected.Status==='Active'?'text-emerald-700':'text-slate-500'} />
+              {selected.Vacated_Date && <FieldRow label="Vacated On" value={selected.Vacated_Date} />}
+              {selected.Remarks && <FieldRow label="Remarks" value={selected.Remarks} last />}
+            </ModalSection>
+          </div>
+        </Modal>
+      )}
 
       {/* ── Filter Modal ── */}
-      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Allotments">
+      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Allotments" icon={Filter} variant="info" size="md">
         <div className="space-y-4">
           <div>
             <label className="label">Department</label>
@@ -331,7 +353,7 @@ export default function AllotmentsPage() {
       </Modal>
 
       {/* ── Add Employee Modal ── */}
-      <Modal open={showAddEmp} onClose={() => { setShowAddEmp(false); setEmpForm(empForm0) }} title="Add Employee">
+      <Modal open={showAddEmp} onClose={() => { setShowAddEmp(false); setEmpForm(empForm0) }} title="Add Employee" icon={User} variant="info" size="sm">
         <div className="space-y-3">
           <div><label className="label">Full Name *</label><input className="input" value={empForm.name} onChange={ef('name')} /></div>
           <div><label className="label">Designation *</label><input className="input" value={empForm.designation} onChange={ef('designation')} /></div>
@@ -395,17 +417,5 @@ function ActionBtn({ icon: Icon, color, title, onClick }) {
   )
 }
 
-function DetailGrid({ rows }) {
-  return (
-    <div className="bg-slate-50 rounded-xl overflow-hidden">
-      {rows.map(([label, value], i) => (
-        <div key={i} className={`flex justify-between gap-4 px-3 py-2 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
-          <span className="text-xs text-slate-400 font-medium flex-shrink-0">{label}</span>
-          <span className="text-xs text-slate-700 font-semibold text-right">{value || '—'}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
 
 function today() { return new Date().toISOString().split('T')[0] }

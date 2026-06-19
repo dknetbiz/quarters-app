@@ -1,20 +1,26 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { IndianRupee, Plus, Search, AlertCircle, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { IndianRupee, Plus, Search, AlertCircle, Eye, ChevronsUpDown, ChevronUp, ChevronDown, Filter } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { addRentEntry } from '../lib/googleSheets'
-import Modal from '../components/Modal'
+import Modal, { ModalSection, FieldRow } from '../components/Modal'
+import { DEPARTMENTS, QUARTER_TYPES } from '../lib/constants'
 
 export default function RentPage() {
   const { rent, allotments, quarters, employees, refreshRent, fetchAll, lastFetched } = useData()
   const { auditUser } = useAuth()
 
-  const [search,   setSearch]   = useState('')
-  const [showNew,  setShowNew]  = useState(false)
-  const [selected, setSelected] = useState(null)
-  const [saving,   setSaving]   = useState(false)
-  const [sortKey,  setSortKey]  = useState('Month')
-  const [sortDir,  setSortDir]  = useState('desc')
+  const [search,        setSearch]        = useState('')
+  const [showNew,       setShowNew]       = useState(false)
+  const [showFilter,    setShowFilter]    = useState(false)
+  const [selected,      setSelected]      = useState(null)
+  const [saving,        setSaving]        = useState(false)
+  const [sortKey,       setSortKey]       = useState('Month')
+  const [sortDir,       setSortDir]       = useState('desc')
+  const [filterMonth,   setFilterMonth]   = useState('')
+  const [filterDept,    setFilterDept]    = useState('')
+  const [filterQType,   setFilterQType]   = useState('')
+  const [filterShortfall, setFilterShortfall] = useState(false)
 
   const emptyForm = { allotment_id:'', quarter_id:'', emp_id:'', month: currentMonth(), standard_rent:'', actual_recovery:'', remarks:'' }
   const [form, setForm] = useState(emptyForm)
@@ -37,16 +43,20 @@ export default function RentPage() {
     standard: parseFloat(r.Standard_Rent) || 0,
   })), [rent, employees, quarters])
 
+  const months = useMemo(() => [...new Set(baseList.map(r => r.Month?.slice(0,7)).filter(Boolean))].sort((a,b)=>b.localeCompare(a)), [baseList])
+  const activeFilterCount = [filterMonth, filterDept, filterQType, filterShortfall ? 'y' : ''].filter(Boolean).length
+
   const filtered = useMemo(() => {
     const s = search.toLowerCase()
-    if (!s) return baseList
-    return baseList.filter(r =>
-      r.emp?.Name?.toLowerCase().includes(s) ||
-      r.qtr?.Quarter_No?.toLowerCase().includes(s) ||
-      r.Month?.toLowerCase().includes(s) ||
-      r.Emp_ID?.toLowerCase().includes(s)
-    )
-  }, [baseList, search])
+    return baseList.filter(r => {
+      if (s && !(r.emp?.Name?.toLowerCase().includes(s) || r.qtr?.Quarter_No?.toLowerCase().includes(s) || r.Month?.toLowerCase().includes(s) || r.Emp_ID?.toLowerCase().includes(s))) return false
+      if (filterMonth  && !r.Month?.startsWith(filterMonth)) return false
+      if (filterDept   && r.emp?.Department !== filterDept)   return false
+      if (filterQType  && r.qtr?.Type       !== filterQType)  return false
+      if (filterShortfall && r.diff <= 0) return false
+      return true
+    })
+  }, [baseList, search, filterMonth, filterDept, filterQType, filterShortfall])
 
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
     const va = sortKey === 'emp_name' ? (a.emp?.Name || '') : sortKey === 'qtr_no' ? (a.qtr?.Quarter_No || '') : (a[sortKey] || '')
@@ -100,6 +110,10 @@ export default function RentPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input className="input pl-9" placeholder="Search by employee, quarter or month…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <button onClick={() => setShowFilter(true)} className={`relative w-10 h-10 flex items-center justify-center rounded-xl border ${activeFilterCount ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white'}`}>
+          <Filter className={`w-4 h-4 ${activeFilterCount ? 'text-brand-600' : 'text-slate-500'}`} />
+          {activeFilterCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-600 text-white text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>}
+        </button>
         <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5">
           <Plus className="w-4 h-4" /> Add Entry
         </button>
@@ -162,8 +176,45 @@ export default function RentPage() {
         </div>
       </div>
 
+      {/* ── Filter Modal ── */}
+      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Rent Records" icon={Filter} variant="info" size="sm">
+        <div className="space-y-3">
+          <div>
+            <label className="label">Month</label>
+            <select className="input" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
+              <option value="">All Months</option>
+              {months.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Department</label>
+            <select className="input" value={filterDept} onChange={e => setFilterDept(e.target.value)}>
+              <option value="">All Departments</option>
+              {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Quarter Type</label>
+            <select className="input" value={filterQType} onChange={e => setFilterQType(e.target.value)}>
+              <option value="">All Types</option>
+              {QUARTER_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <button onClick={() => setFilterShortfall(v => !v)}
+            className={`w-full py-2.5 rounded-xl border text-sm font-semibold transition-colors ${filterShortfall ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+            {filterShortfall ? '✓ Shortfall Records Only' : 'Shortfall Records Only'}
+          </button>
+          <div className="flex gap-2 pt-1">
+            <button className="btn-secondary flex-1" onClick={() => { setFilterMonth(''); setFilterDept(''); setFilterQType(''); setFilterShortfall(false); setShowFilter(false) }}>Clear All</button>
+            <button className="btn-primary flex-1" onClick={() => setShowFilter(false)}>Apply</button>
+          </div>
+        </div>
+      </Modal>
+
       {/* ── Add Rent Modal ── */}
-      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="Add Rent Entry">
+      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="Add Rent Entry" icon={IndianRupee} variant="success" size="md"
+        footer={<div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button><button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Entry'}</button></div>}
+      >
         <div className="space-y-3">
           <div>
             <label className="label">Active Allotment *</label>
@@ -203,36 +254,46 @@ export default function RentPage() {
             <input className="input" placeholder="Optional" value={form.remarks} onChange={f('remarks')} />
           </div>
         </div>
-        <div className="flex gap-2 mt-4">
-          <button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Entry'}</button>
-        </div>
       </Modal>
 
       {/* ── Detail Modal ── */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Rent Entry Details">
-        {selected && (
-          <div className="space-y-3">
-            <div className="bg-slate-50 rounded-xl overflow-hidden">
-              {[
-                ['Month',          selected.Month],
-                ['Quarter',        selected.qtr?.Quarter_No || selected.Quarter_ID],
-                ['Employee',       selected.emp?.Name || selected.Emp_ID],
-                ['Department',     selected.emp?.Department || '—'],
-                ['Standard Rent',  selected.standard > 0 ? `₹${fmtAmt(selected.standard)}` : '—'],
-                ['Actual Recovery',`₹${fmtAmt(selected.recovery)}`],
-                selected.diff !== 0 && ['Difference', selected.diff > 0 ? `-₹${fmtAmt(selected.diff)} (shortfall)` : `+₹${fmtAmt(Math.abs(selected.diff))} (excess)`],
-                selected.Remarks && ['Remarks', selected.Remarks],
-              ].filter(Boolean).map(([l, v], i) => (
-                <div key={i} className={`flex justify-between gap-4 px-3 py-2 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
-                  <span className="text-xs text-slate-400 font-medium">{l}</span>
-                  <span className={`text-xs font-semibold text-right ${l === 'Difference' && selected.diff > 0 ? 'text-red-600' : l === 'Difference' && selected.diff < 0 ? 'text-blue-600' : l === 'Actual Recovery' ? 'text-emerald-600' : 'text-slate-700'}`}>{v || '—'}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Modal>
+      {selected && (
+        <Modal
+          open={!!selected} onClose={() => setSelected(null)}
+          title={`Rent — ${selected.Month}`}
+          icon={IndianRupee}
+          subtitle={`${selected.qtr?.Quarter_No || selected.Quarter_ID} · ${selected.emp?.Name || selected.Emp_ID}`}
+          badge={selected.diff > 0
+            ? { label: 'Shortfall', cls: 'bg-rose-300/30 text-rose-100' }
+            : selected.diff < 0
+              ? { label: 'Excess', cls: 'bg-blue-300/30 text-blue-100' }
+              : { label: 'Exact', cls: 'bg-emerald-300/30 text-emerald-100' }}
+          variant={selected.diff > 0 ? 'danger' : 'default'}
+          size="sm"
+        >
+          <ModalSection title="Quarter &amp; Allottee">
+            <FieldRow label="Quarter"     value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
+            <FieldRow label="Type"        value={selected.qtr?.Type} />
+            <FieldRow label="Employee"    value={selected.emp?.Name || selected.Emp_ID} />
+            <FieldRow label="Department"  value={selected.emp?.Department} last />
+          </ModalSection>
+          <ModalSection title="Rent Details">
+            <FieldRow label="Month"       value={selected.Month} />
+            <FieldRow label="Standard"    value={selected.standard > 0 ? `₹${fmtAmt(selected.standard)}` : '—'} valueClass="text-blue-700" />
+            <FieldRow label="Recovered"   value={`₹${fmtAmt(selected.recovery)}`} valueClass="text-emerald-700 font-bold" />
+            <FieldRow label="Difference"
+              value={selected.diff > 0 ? `-₹${fmtAmt(selected.diff)} (shortfall)` : selected.diff < 0 ? `+₹${fmtAmt(Math.abs(selected.diff))} (excess)` : 'Exact match'}
+              valueClass={selected.diff > 0 ? 'text-rose-600 font-bold' : selected.diff < 0 ? 'text-blue-600' : 'text-emerald-600'}
+              last
+            />
+          </ModalSection>
+          {selected.Remarks && (
+            <ModalSection title="Remarks">
+              <FieldRow label="Note" value={selected.Remarks} last />
+            </ModalSection>
+          )}
+        </Modal>
+      )}
 
     </div>
   )

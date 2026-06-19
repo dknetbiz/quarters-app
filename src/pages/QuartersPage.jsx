@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { addQuarter, updateQuarter } from '../lib/googleSheets'
 import { QUARTER_TYPES, LOCATIONS, STATUSES } from '../lib/constants'
 import Modal from '../components/Modal'
+import { Pencil as PencilIcon } from 'lucide-react'
 
 export default function QuartersPage() {
   const { quarters, allotments, employees, refreshQuarters } = useData()
@@ -147,7 +148,7 @@ export default function QuartersPage() {
       </div>
 
       {/* ── Filter Modal ── */}
-      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Quarters">
+      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Quarters" icon={Filter} variant="info" size="sm">
         <div className="space-y-4">
           <div>
             <label className="label">Status</label>
@@ -182,24 +183,18 @@ export default function QuartersPage() {
       </Modal>
 
       {/* ── Add Quarter Modal ── */}
-      <Modal open={showAdd} onClose={() => { setShowAdd(false); setForm(emptyForm) }} title="Add New Quarter">
+      <Modal open={showAdd} onClose={() => { setShowAdd(false); setForm(emptyForm) }} title="Add New Quarter" icon={Building2} variant="success" size="md"
+        footer={<div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => { setShowAdd(false); setForm(emptyForm) }}>Cancel</button><button className="btn-primary flex-1" onClick={handleSaveNew} disabled={saving}>{saving ? 'Saving…' : 'Add Quarter'}</button></div>}
+      >
         <QuarterForm form={form} setForm={setForm} />
-        <div className="flex gap-2 mt-4">
-          <button className="btn-secondary flex-1" onClick={() => { setShowAdd(false); setForm(emptyForm) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleSaveNew} disabled={saving}>{saving ? 'Saving…' : 'Add Quarter'}</button>
-        </div>
       </Modal>
 
       {/* ── Edit Quarter Modal ── */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Edit Quarter">
-        {selected && <>
-          <p className="text-[11px] text-slate-400 mb-3 font-mono">ID: {selected.Quarter_ID}</p>
-          <QuarterForm form={form} setForm={setForm} />
-          <div className="flex gap-2 mt-4">
-            <button className="btn-secondary flex-1" onClick={() => setSelected(null)}>Cancel</button>
-            <button className="btn-primary flex-1" onClick={handleUpdate} disabled={saving}>{saving ? 'Saving…' : 'Update Quarter'}</button>
-          </div>
-        </>}
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={`Edit: ${selected?.Quarter_No || ''}`} icon={PencilIcon} variant="info" size="md"
+        subtitle={selected ? `ID: ${selected.Quarter_ID}` : undefined}
+        footer={selected ? <div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => setSelected(null)}>Cancel</button><button className="btn-primary flex-1" onClick={handleUpdate} disabled={saving}>{saving ? 'Saving…' : 'Update Quarter'}</button></div> : null}
+      >
+        {selected && <QuarterForm form={form} setForm={setForm} />}
       </Modal>
     </div>
   )
