@@ -2,13 +2,9 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Building2, CheckCircle, XCircle, Wrench, AlertTriangle, ArrowRight,
-  MapPin, TrendingUp, Plus, Key, IndianRupee, ClipboardList, Users, UserCheck
+  MapPin, TrendingUp, Key, IndianRupee, ClipboardList, Users, UserCheck
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
-import { useAuth } from '../context/AuthContext'
-import { createAllotment } from '../lib/googleSheets'
-import { ALLOTMENT_TYPES, QUARTER_TYPES, DEPARTMENTS } from '../lib/constants'
-import Modal from '../components/Modal'
 
 // Canonical type ordering (suffix after "Type-")
 const TYPE_ORDER = ['D1','D','C','V','IV','B','III','II','A','I','C&D','0']
@@ -57,15 +53,8 @@ export default function Dashboard() {
   const {
     stats, quarters, allotments, employees, keys,
     loadingData, fetchAll, lastFetched,
-    refreshAllotments, refreshQuarters
   } = useData()
-  const { auditUser } = useAuth()
   const navigate = useNavigate()
-
-  const [typeModal,  setTypeModal]  = useState(null)
-  const [allotModal, setAllotModal] = useState(false)
-  const [allotForm,  setAllotForm]  = useState(emptyForm())
-  const [saving,     setSaving]     = useState(false)
 
   useEffect(() => { if (!lastFetched) fetchAll() }, [])
 
@@ -91,42 +80,6 @@ export default function Dashboard() {
     })
     return Object.entries(map).sort((a, b) => b[1] - a[1])
   }, [allotments, employees])
-
-  // Type detail modal data
-  const typeData = useMemo(() => {
-    if (!typeModal) return { list: [] }
-    const tq = quarters.filter(q => q.Type === typeModal.type)
-    if (typeModal.mode === 'vacant') return { list: tq.filter(q => q.Status === 'Vacant') }
-    const ids = new Set(tq.map(q => q.Quarter_ID))
-    return {
-      list: allotments
-        .filter(a => a.Status === 'Active' && ids.has(a.Quarter_ID))
-        .map(a => ({
-          ...a,
-          emp: employees.find(e => e.Emp_ID === a.Emp_ID),
-          qtr: tq.find(q => q.Quarter_ID === a.Quarter_ID),
-        }))
-    }
-  }, [typeModal, quarters, allotments, employees])
-
-  const typeVacantQuarters = typeModal
-    ? quarters.filter(q => q.Type === typeModal.type && q.Status === 'Vacant')
-    : []
-
-  const activeEmployees = employees.filter(e => e.Active === 'TRUE')
-
-  async function handleCreateAllotment() {
-    if (!allotForm.quarter_id || !allotForm.emp_id || !allotForm.allotment_date) return
-    setSaving(true)
-    try {
-      await createAllotment(allotForm, auditUser)
-      await Promise.all([refreshAllotments(), refreshQuarters()])
-      setAllotModal(false); setAllotForm(emptyForm()); setTypeModal(null)
-    } catch (e) { alert('Error: ' + e.message) }
-    finally { setSaving(false) }
-  }
-
-  const f = k => e => setAllotForm(p => ({ ...p, [k]: e.target.value }))
 
   if (loadingData && !lastFetched) {
     return (
@@ -182,7 +135,7 @@ export default function Dashboard() {
                     </div>
                     {/* Occupied — always emerald */}
                     <button
-                      onClick={() => setTypeModal({ type, mode: 'occupied' })}
+                      onClick={() => navigate(`/quarters?type=${encodeURIComponent(type)}&status=Occupied`)}
                       className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 flex flex-col items-center justify-center py-2.5 sm:py-3 transition-colors relative overflow-hidden"
                     >
                       <span className="absolute text-4xl font-black text-white/10 select-none pointer-events-none leading-none">{suffix}</span>
@@ -191,7 +144,7 @@ export default function Dashboard() {
                     </button>
                     {/* Vacant — always rose */}
                     <button
-                      onClick={() => setTypeModal({ type, mode: 'vacant' })}
+                      onClick={() => navigate(`/quarters?type=${encodeURIComponent(type)}&status=Vacant`)}
                       className="flex-1 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 flex flex-col items-center justify-center py-2 transition-colors"
                     >
                       <p className="text-lg sm:text-xl font-extrabold text-white leading-none">{vac}</p>
@@ -219,7 +172,7 @@ export default function Dashboard() {
                   return (
                     <button
                       key={type}
-                      onClick={() => setTypeModal({ type, mode: 'vacant' })}
+                      onClick={() => navigate(`/quarters?type=${encodeURIComponent(type)}&status=Vacant`)}
                       className="relative bg-rose-50 border border-rose-100 rounded-lg overflow-hidden active:bg-rose-100 transition-colors min-h-[72px] flex flex-col items-center justify-center"
                     >
                       {/* Centred watermark */}
@@ -249,11 +202,12 @@ export default function Dashboard() {
                 const grad = ORG_PALETTE[dept] || 'from-slate-400 to-slate-600'
                 const pct  = stats.occupied ? Math.round(count / stats.occupied * 100) : 0
                 return (
-                  <div key={dept} className={`flex-shrink-0 bg-gradient-to-br ${grad} rounded-xl px-3.5 py-3 min-w-[88px] text-white`}>
+                  <button key={dept} onClick={() => navigate(`/allotments?dept=${encodeURIComponent(dept)}`)}
+                    className={`flex-shrink-0 bg-gradient-to-br ${grad} rounded-xl px-3.5 py-3 min-w-[88px] text-white text-left active:opacity-80 transition-opacity`}>
                     <p className="text-[9px] font-bold uppercase tracking-widest opacity-70">{dept}</p>
                     <p className="text-xl font-extrabold leading-none mt-1">{count}</p>
                     <p className="text-[9px] opacity-55 mt-0.5">{pct}% of occ</p>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -358,113 +312,6 @@ export default function Dashboard() {
 
       </div>
 
-      {/* ── Type detail modal ─────────────────────────────── */}
-      <Modal
-        open={!!typeModal && !allotModal}
-        onClose={() => setTypeModal(null)}
-        title={typeModal
-          ? `${typeModal.type} — ${typeModal.mode === 'vacant' ? 'Vacant Quarters' : 'Current Occupants'}`
-          : ''}
-      >
-        {typeModal && (
-          <div className="space-y-2">
-            {typeModal.mode === 'vacant' ? (
-              <>
-                {typeData.list.length === 0
-                  ? <p className="text-sm text-slate-400 text-center py-8">No vacant quarters for {typeModal.type}</p>
-                  : typeData.list.map(q => (
-                    <div key={q.Quarter_ID} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2.5">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">{q.Quarter_No}</p>
-                        <p className="text-xs text-slate-500">{q.Location}{q.Block ? ` · Block ${q.Block}` : ''}</p>
-                      </div>
-                      <span className="badge-vacant">Vacant</span>
-                    </div>
-                  ))
-                }
-                {typeData.list.length > 0 && (
-                  <button
-                    className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
-                    onClick={() => { setAllotForm(emptyForm()); setAllotModal(true) }}
-                  >
-                    <Plus className="w-4 h-4" /> New Allotment for {typeModal.type}
-                  </button>
-                )}
-              </>
-            ) : (
-              typeData.list.length === 0
-                ? <p className="text-sm text-slate-400 text-center py-8">No active occupants for {typeModal.type}</p>
-                : typeData.list.map((a, i) => (
-                  <div key={i} className="flex items-center gap-3 bg-slate-50 rounded-xl px-3 py-2.5">
-                    <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <UserCheck className="w-4 h-4 text-emerald-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-800 truncate">{a.emp?.Name || a.Emp_ID}</p>
-                      <p className="text-xs text-slate-500 truncate">{a.qtr?.Quarter_No || a.Quarter_ID} · {a.emp?.Designation || ''}</p>
-                      <p className="text-xs text-slate-400">{a.Allotment_Date} · {a.emp?.Department || ''}</p>
-                    </div>
-                  </div>
-                ))
-            )}
-          </div>
-        )}
-      </Modal>
-
-      {/* ── New Allotment modal ───────────────────────────── */}
-      <Modal
-        open={allotModal}
-        onClose={() => { setAllotModal(false); setAllotForm(emptyForm()) }}
-        title={`New Allotment — ${typeModal?.type || ''}`}
-      >
-        <div className="space-y-3">
-          <div>
-            <label className="label">Quarter (Vacant) *</label>
-            <select className="input" value={allotForm.quarter_id} onChange={f('quarter_id')}>
-              <option value="">Select vacant quarter</option>
-              {typeVacantQuarters.map(q => (
-                <option key={q.Quarter_ID} value={q.Quarter_ID}>{q.Quarter_No} · {q.Location}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Employee *</label>
-            <select className="input" value={allotForm.emp_id} onChange={f('emp_id')}>
-              <option value="">Select employee</option>
-              {activeEmployees.map(e => (
-                <option key={e.Emp_ID} value={e.Emp_ID}>{e.Name} · {e.Designation} · {e.Department}</option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Date *</label>
-              <input className="input" type="date" value={allotForm.allotment_date} onChange={f('allotment_date')} />
-            </div>
-            <div>
-              <label className="label">Rent (₹)</label>
-              <input className="input" type="number" placeholder="0" value={allotForm.rent} onChange={f('rent')} />
-            </div>
-          </div>
-          <div>
-            <label className="label">Allotment Type</label>
-            <select className="input" value={allotForm.allotment_type} onChange={f('allotment_type')}>
-              {ALLOTMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Remarks</label>
-            <input className="input" placeholder="Optional" value={allotForm.remarks} onChange={f('remarks')} />
-          </div>
-        </div>
-        <div className="flex gap-2 mt-4">
-          <button className="btn-secondary flex-1" onClick={() => { setAllotModal(false); setAllotForm(emptyForm()) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleCreateAllotment} disabled={saving}>
-            {saving ? 'Saving…' : 'Create Allotment'}
-          </button>
-        </div>
-      </Modal>
-
     </div>
   )
 }
@@ -504,14 +351,6 @@ function QuickAction({ icon: Icon, label, bg, text, onClick }) {
 }
 
 /* ── Helpers ─────────────────────────────────────────────── */
-
-function emptyForm() {
-  return {
-    quarter_id: '', emp_id: '',
-    allotment_date: new Date().toISOString().split('T')[0],
-    allotment_type: 'Allotment', rent: '', remarks: ''
-  }
-}
 
 function daysDiff(dateStr) {
   try {

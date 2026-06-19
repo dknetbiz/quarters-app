@@ -1,26 +1,29 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { IndianRupee, Plus, Search, AlertCircle, Eye, ChevronsUpDown, ChevronUp, ChevronDown, Filter } from 'lucide-react'
+import { IndianRupee, Plus, Search, AlertCircle, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { addRentEntry } from '../lib/googleSheets'
 import Modal, { ModalSection, FieldRow } from '../components/Modal'
+import SidebarPage from '../components/SidebarPage'
+import { FilterSection, FilterSelect, FilterToggle, ClearFilters, ResultCount } from '../components/Filters'
+import Pagination, { paginate, PER_PAGE } from '../components/Pagination'
 import { DEPARTMENTS, QUARTER_TYPES } from '../lib/constants'
 
 export default function RentPage() {
   const { rent, allotments, quarters, employees, refreshRent, fetchAll, lastFetched } = useData()
   const { auditUser } = useAuth()
 
-  const [search,        setSearch]        = useState('')
-  const [showNew,       setShowNew]       = useState(false)
-  const [showFilter,    setShowFilter]    = useState(false)
-  const [selected,      setSelected]      = useState(null)
-  const [saving,        setSaving]        = useState(false)
-  const [sortKey,       setSortKey]       = useState('Month')
-  const [sortDir,       setSortDir]       = useState('desc')
-  const [filterMonth,   setFilterMonth]   = useState('')
-  const [filterDept,    setFilterDept]    = useState('')
-  const [filterQType,   setFilterQType]   = useState('')
+  const [search,          setSearch]          = useState('')
+  const [showNew,         setShowNew]         = useState(false)
+  const [selected,        setSelected]        = useState(null)
+  const [saving,          setSaving]          = useState(false)
+  const [sortKey,         setSortKey]         = useState('Month')
+  const [sortDir,         setSortDir]         = useState('desc')
+  const [filterMonth,     setFilterMonth]     = useState('')
+  const [filterDept,      setFilterDept]      = useState('')
+  const [filterQType,     setFilterQType]     = useState('')
   const [filterShortfall, setFilterShortfall] = useState(false)
+  const [page,            setPage]            = useState(1)
 
   const emptyForm = { allotment_id:'', quarter_id:'', emp_id:'', month: currentMonth(), standard_rent:'', actual_recovery:'', remarks:'' }
   const [form, setForm] = useState(emptyForm)
@@ -32,27 +35,28 @@ export default function RentPage() {
   function toggleSort(key) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('asc') }
+    setPage(1)
   }
 
   const baseList = useMemo(() => rent.map(r => ({
     ...r,
     emp: employees.find(e => e.Emp_ID === r.Emp_ID),
     qtr: quarters.find(q => q.Quarter_ID === r.Quarter_ID),
-    diff: parseFloat(r.Difference) || 0,
+    diff:     parseFloat(r.Difference)     || 0,
     recovery: parseFloat(r.Actual_Recovery) || 0,
-    standard: parseFloat(r.Standard_Rent) || 0,
+    standard: parseFloat(r.Standard_Rent)  || 0,
   })), [rent, employees, quarters])
 
   const months = useMemo(() => [...new Set(baseList.map(r => r.Month?.slice(0,7)).filter(Boolean))].sort((a,b)=>b.localeCompare(a)), [baseList])
-  const activeFilterCount = [filterMonth, filterDept, filterQType, filterShortfall ? 'y' : ''].filter(Boolean).length
+  const activeFilters = [filterMonth, filterDept, filterQType, filterShortfall ? 'y' : ''].filter(Boolean).length
 
   const filtered = useMemo(() => {
     const s = search.toLowerCase()
     return baseList.filter(r => {
       if (s && !(r.emp?.Name?.toLowerCase().includes(s) || r.qtr?.Quarter_No?.toLowerCase().includes(s) || r.Month?.toLowerCase().includes(s) || r.Emp_ID?.toLowerCase().includes(s))) return false
-      if (filterMonth  && !r.Month?.startsWith(filterMonth)) return false
-      if (filterDept   && r.emp?.Department !== filterDept)   return false
-      if (filterQType  && r.qtr?.Type       !== filterQType)  return false
+      if (filterMonth    && !r.Month?.startsWith(filterMonth)) return false
+      if (filterDept     && r.emp?.Department !== filterDept)   return false
+      if (filterQType    && r.qtr?.Type       !== filterQType)  return false
       if (filterShortfall && r.diff <= 0) return false
       return true
     })
@@ -64,6 +68,15 @@ export default function RentPage() {
     const cmp = va.localeCompare(vb, undefined, { numeric: true })
     return sortDir === 'asc' ? cmp : -cmp
   }), [filtered, sortKey, sortDir])
+
+  const pageData = useMemo(() => paginate(sorted, page), [sorted, page])
+
+  const totalRecovery  = baseList.reduce((s, r) => s + r.recovery, 0)
+  const totalStandard  = baseList.reduce((s, r) => s + r.standard, 0)
+  const shortfallCount = baseList.filter(r => r.diff > 0).length
+  const shortfallTotal = baseList.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0)
+
+  function clearFilters() { setFilterMonth(''); setFilterDept(''); setFilterQType(''); setFilterShortfall(false); setPage(1) }
 
   function handleAllotmentSelect(e) {
     const alt = activeAllotments.find(a => a.Allotment_ID === e.target.value)
@@ -79,22 +92,70 @@ export default function RentPage() {
 
   const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
-  const totalRecovery  = baseList.reduce((s, r) => s + r.recovery, 0)
-  const totalStandard  = baseList.reduce((s, r) => s + r.standard, 0)
-  const shortfallCount = baseList.filter(r => r.diff > 0).length
-  const shortfallTotal = baseList.filter(r => r.diff > 0).reduce((s, r) => s + r.diff, 0)
+  const sidebar = (
+    <>
+      <FilterSection title="Month">
+        <FilterSelect
+          value={filterMonth}
+          onChange={v => { setFilterMonth(v); setPage(1) }}
+          options={months}
+          placeholder="All Months"
+        />
+      </FilterSection>
+
+      <FilterSection title="Department">
+        <FilterSelect
+          value={filterDept}
+          onChange={v => { setFilterDept(v); setPage(1) }}
+          options={DEPARTMENTS}
+          placeholder="All Departments"
+        />
+      </FilterSection>
+
+      <FilterSection title="Quarter Type">
+        <FilterSelect
+          value={filterQType}
+          onChange={v => { setFilterQType(v); setPage(1) }}
+          options={QUARTER_TYPES}
+          placeholder="All Types"
+        />
+      </FilterSection>
+
+      <FilterSection title="Anomalies">
+        <FilterToggle
+          label={`Shortfalls only${shortfallCount > 0 ? ` (${shortfallCount})` : ''}`}
+          value={filterShortfall}
+          onChange={v => { setFilterShortfall(v); setPage(1) }}
+        />
+      </FilterSection>
+
+      <ClearFilters onClick={clearFilters} count={activeFilters} />
+    </>
+  )
+
+  const toolbar = (
+    <div className="flex gap-2">
+      <div className="flex-1 relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <input className="input pl-9" placeholder="Search employee, quarter, month…" value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1) }} />
+      </div>
+      <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5 whitespace-nowrap">
+        <Plus className="w-4 h-4" /> Add Entry
+      </button>
+    </div>
+  )
 
   return (
-    <div className="p-4 space-y-3">
+    <SidebarPage sidebar={sidebar} filterCount={activeFilters} toolbar={toolbar}>
 
       {/* ── Summary strip ── */}
       <div className="grid grid-cols-3 gap-2">
-        <SummaryCard label="Entries" value={rent.length} color="slate" />
+        <SummaryCard label="Entries"   value={rent.length}                  color="slate" />
         <SummaryCard label="Recovered" value={`₹${fmtAmt(totalRecovery)}`} color="emerald" />
-        <SummaryCard label="Standard" value={`₹${fmtAmt(totalStandard)}`} color="blue" />
+        <SummaryCard label="Standard"  value={`₹${fmtAmt(totalStandard)}`} color="blue" />
       </div>
 
-      {/* ── Shortfall alert ── */}
       {shortfallCount > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
@@ -104,22 +165,7 @@ export default function RentPage() {
         </div>
       )}
 
-      {/* ── Toolbar ── */}
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input className="input pl-9" placeholder="Search by employee, quarter or month…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <button onClick={() => setShowFilter(true)} className={`relative w-10 h-10 flex items-center justify-center rounded-xl border ${activeFilterCount ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white'}`}>
-          <Filter className={`w-4 h-4 ${activeFilterCount ? 'text-brand-600' : 'text-slate-500'}`} />
-          {activeFilterCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-600 text-white text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>}
-        </button>
-        <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5">
-          <Plus className="w-4 h-4" /> Add Entry
-        </button>
-      </div>
-
-      <p className="text-xs text-slate-400 font-medium">{sorted.length} record{sorted.length !== 1 ? 's' : ''}</p>
+      <ResultCount count={sorted.length} total={baseList.length} label="rent record" />
 
       {/* ── Table ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -127,7 +173,7 @@ export default function RentPage() {
           <table className="w-full text-sm min-w-[620px]">
             <thead>
               <tr className="bg-slate-800 text-white">
-                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide w-10">#</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide w-8">#</th>
                 <SortTh label="Month"    field="Month"    sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Quarter"  field="qtr_no"   sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <SortTh label="Employee" field="emp_name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
@@ -138,12 +184,12 @@ export default function RentPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sorted.map((r, i) => {
+              {pageData.map((r, i) => {
                 const shortfall = r.diff > 0
                 const excess    = r.diff < 0
                 return (
-                  <tr key={r.Rent_ID} className={`hover:bg-brand-50/40 transition-colors ${i % 2 === 1 ? 'bg-slate-50/60' : ''} ${shortfall ? 'bg-red-50/40' : ''}`}>
-                    <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{i + 1}</td>
+                  <tr key={r.Rent_ID} className={`hover:bg-brand-50/40 transition-colors ${shortfall ? 'bg-red-50/40' : i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
+                    <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{(page-1)*PER_PAGE + i + 1}</td>
                     <td className="px-3 py-2.5 text-slate-700 font-medium whitespace-nowrap">{r.Month}</td>
                     <td className="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">{r.qtr?.Quarter_No || r.Quarter_ID}</td>
                     <td className="px-3 py-2.5">
@@ -174,45 +220,12 @@ export default function RentPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} total={sorted.length} onChange={p => { setPage(p); window.scrollTo(0,0) }} />
       </div>
 
-      {/* ── Filter Modal ── */}
-      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Rent Records" icon={Filter} variant="info" size="sm">
-        <div className="space-y-3">
-          <div>
-            <label className="label">Month</label>
-            <select className="input" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}>
-              <option value="">All Months</option>
-              {months.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Department</label>
-            <select className="input" value={filterDept} onChange={e => setFilterDept(e.target.value)}>
-              <option value="">All Departments</option>
-              {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Quarter Type</label>
-            <select className="input" value={filterQType} onChange={e => setFilterQType(e.target.value)}>
-              <option value="">All Types</option>
-              {QUARTER_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <button onClick={() => setFilterShortfall(v => !v)}
-            className={`w-full py-2.5 rounded-xl border text-sm font-semibold transition-colors ${filterShortfall ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200'}`}>
-            {filterShortfall ? '✓ Shortfall Records Only' : 'Shortfall Records Only'}
-          </button>
-          <div className="flex gap-2 pt-1">
-            <button className="btn-secondary flex-1" onClick={() => { setFilterMonth(''); setFilterDept(''); setFilterQType(''); setFilterShortfall(false); setShowFilter(false) }}>Clear All</button>
-            <button className="btn-primary flex-1" onClick={() => setShowFilter(false)}>Apply</button>
-          </div>
-        </div>
-      </Modal>
-
       {/* ── Add Rent Modal ── */}
-      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="Add Rent Entry" icon={IndianRupee} variant="success" size="md"
+      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }}
+        title="Add Rent Entry" icon={IndianRupee} variant="success" size="md"
         footer={<div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button><button className="btn-primary flex-1" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Entry'}</button></div>}
       >
         <div className="space-y-3">
@@ -258,29 +271,27 @@ export default function RentPage() {
 
       {/* ── Detail Modal ── */}
       {selected && (
-        <Modal
-          open={!!selected} onClose={() => setSelected(null)}
-          title={`Rent — ${selected.Month}`}
-          icon={IndianRupee}
+        <Modal open={!!selected} onClose={() => setSelected(null)}
+          title={`Rent — ${selected.Month}`} icon={IndianRupee}
           subtitle={`${selected.qtr?.Quarter_No || selected.Quarter_ID} · ${selected.emp?.Name || selected.Emp_ID}`}
           badge={selected.diff > 0
-            ? { label: 'Shortfall', cls: 'bg-rose-300/30 text-rose-100' }
+            ? { label:'Shortfall', cls:'bg-rose-300/30 text-rose-100' }
             : selected.diff < 0
-              ? { label: 'Excess', cls: 'bg-blue-300/30 text-blue-100' }
-              : { label: 'Exact', cls: 'bg-emerald-300/30 text-emerald-100' }}
+              ? { label:'Excess', cls:'bg-blue-300/30 text-blue-100' }
+              : { label:'Exact',  cls:'bg-emerald-300/30 text-emerald-100' }}
           variant={selected.diff > 0 ? 'danger' : 'default'}
           size="sm"
         >
           <ModalSection title="Quarter &amp; Allottee">
-            <FieldRow label="Quarter"     value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
-            <FieldRow label="Type"        value={selected.qtr?.Type} />
-            <FieldRow label="Employee"    value={selected.emp?.Name || selected.Emp_ID} />
-            <FieldRow label="Department"  value={selected.emp?.Department} last />
+            <FieldRow label="Quarter"    value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
+            <FieldRow label="Type"       value={selected.qtr?.Type} />
+            <FieldRow label="Employee"   value={selected.emp?.Name || selected.Emp_ID} />
+            <FieldRow label="Department" value={selected.emp?.Department} last />
           </ModalSection>
           <ModalSection title="Rent Details">
-            <FieldRow label="Month"       value={selected.Month} />
-            <FieldRow label="Standard"    value={selected.standard > 0 ? `₹${fmtAmt(selected.standard)}` : '—'} valueClass="text-blue-700" />
-            <FieldRow label="Recovered"   value={`₹${fmtAmt(selected.recovery)}`} valueClass="text-emerald-700 font-bold" />
+            <FieldRow label="Month"     value={selected.Month} />
+            <FieldRow label="Standard"  value={selected.standard > 0 ? `₹${fmtAmt(selected.standard)}` : '—'} valueClass="text-blue-700" />
+            <FieldRow label="Recovered" value={`₹${fmtAmt(selected.recovery)}`} valueClass="text-emerald-700 font-bold" />
             <FieldRow label="Difference"
               value={selected.diff > 0 ? `-₹${fmtAmt(selected.diff)} (shortfall)` : selected.diff < 0 ? `+₹${fmtAmt(Math.abs(selected.diff))} (excess)` : 'Exact match'}
               valueClass={selected.diff > 0 ? 'text-rose-600 font-bold' : selected.diff < 0 ? 'text-blue-600' : 'text-emerald-600'}
@@ -295,14 +306,13 @@ export default function RentPage() {
         </Modal>
       )}
 
-    </div>
+    </SidebarPage>
   )
 }
 
 /* ── Sub-components ── */
-
 function SummaryCard({ label, value, color }) {
-  const colors = { slate: 'text-slate-800', emerald: 'text-emerald-600', blue: 'text-blue-600' }
+  const colors = { slate:'text-slate-800', emerald:'text-emerald-600', blue:'text-blue-600' }
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-3 py-2.5">
       <p className="text-[11px] text-slate-400 font-medium">{label}</p>
@@ -317,15 +327,13 @@ function SortTh({ label, field, sortKey, sortDir, onSort }) {
   return (
     <th onClick={() => onSort(field)}
       className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide cursor-pointer select-none hover:bg-slate-700 transition-colors whitespace-nowrap">
-      <span className="flex items-center gap-1">
-        {label}<Icon className={`w-3 h-3 ${active ? 'opacity-100' : 'opacity-30'}`} />
-      </span>
+      <span className="flex items-center gap-1">{label}<Icon className={`w-3 h-3 ${active ? 'opacity-100' : 'opacity-30'}`} /></span>
     </th>
   )
 }
 
 function ActionBtn({ icon: Icon, color, title, onClick }) {
-  const colors = { blue: 'bg-blue-50 text-blue-600 hover:bg-blue-100' }
+  const colors = { blue:'bg-blue-50 text-blue-600 hover:bg-blue-100' }
   return (
     <button onClick={onClick} title={title} className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${colors[color]}`}>
       <Icon className="w-3.5 h-3.5" />

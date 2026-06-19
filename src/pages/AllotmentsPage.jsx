@@ -1,31 +1,36 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Plus, Search, Filter, ClipboardList, UserCheck, UserX, UserMinus, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Search, ClipboardList, UserMinus, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { Building2, User, ClipboardCheck, Calendar } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { createAllotment, vacateAllotment, addEmployee } from '../lib/googleSheets'
 import { ALLOTMENT_TYPES, CATEGORIES, DEPARTMENTS, QUARTER_TYPES } from '../lib/constants'
 import Modal, { ModalSection, FieldRow } from '../components/Modal'
-import { Building2, User, ClipboardCheck, Calendar } from 'lucide-react'
+import SidebarPage from '../components/SidebarPage'
+import { FilterSection, FilterChips, FilterSelect, FilterDateRange, FilterToggle, ClearFilters, ResultCount } from '../components/Filters'
+import Pagination, { paginate, PER_PAGE } from '../components/Pagination'
 
 export default function AllotmentsPage() {
   const { allotments, quarters, employees, refreshAllotments, refreshQuarters, refreshEmployees, fetchAll, lastFetched } = useData()
   const { auditUser } = useAuth()
+  const [searchParams] = useSearchParams()
 
-  const [search,       setSearch]       = useState('')
-  const [tab,          setTab]          = useState('active')
-  const [showNew,      setShowNew]      = useState(false)
-  const [showAddEmp,   setShowAddEmp]   = useState(false)
-  const [showFilter,   setShowFilter]   = useState(false)
-  const [selected,     setSelected]     = useState(null)
-  const [saving,       setSaving]       = useState(false)
-  const [vacateDate,   setVacateDate]   = useState(today())
-  const [sortKey,      setSortKey]      = useState(null)
-  const [sortDir,      setSortDir]      = useState('asc')
-  const [filterDept,   setFilterDept]   = useState('')
-  const [filterQType,  setFilterQType]  = useState('')
-  const [filterAltType,setFilterAltType]= useState('')
-  const [filterFrom,   setFilterFrom]   = useState('')
-  const [filterTo,     setFilterTo]     = useState('')
+  const [search,        setSearch]        = useState('')
+  const [tab,           setTab]           = useState('active')
+  const [showNew,       setShowNew]       = useState(false)
+  const [showAddEmp,    setShowAddEmp]    = useState(false)
+  const [selected,      setSelected]      = useState(null)
+  const [saving,        setSaving]        = useState(false)
+  const [vacateDate,    setVacateDate]    = useState(today())
+  const [sortKey,       setSortKey]       = useState(null)
+  const [sortDir,       setSortDir]       = useState('asc')
+  const [filterDept,    setFilterDept]    = useState(searchParams.get('dept') || '')
+  const [filterQType,   setFilterQType]   = useState('')
+  const [filterAltType, setFilterAltType] = useState('')
+  const [filterFrom,    setFilterFrom]    = useState('')
+  const [filterTo,      setFilterTo]      = useState('')
+  const [page,          setPage]          = useState(1)
 
   const emptyForm = { quarter_id:'', emp_id:'', allotment_date: today(), allotment_type:'Allotment', rent:'', remarks:'' }
   const [form, setForm] = useState(emptyForm)
@@ -37,6 +42,7 @@ export default function AllotmentsPage() {
   function toggleSort(key) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('asc') }
+    setPage(1)
   }
 
   const baseList = useMemo(() => {
@@ -60,11 +66,11 @@ export default function AllotmentsPage() {
         a.qtr?.Quarter_No?.toLowerCase().includes(s) ||
         a.emp?.Department?.toLowerCase().includes(s)
       )) return false
-      if (filterDept    && a.emp?.Department !== filterDept) return false
-      if (filterQType   && a.qtr?.Type !== filterQType) return false
+      if (filterDept    && a.emp?.Department !== filterDept)   return false
+      if (filterQType   && a.qtr?.Type !== filterQType)        return false
       if (filterAltType && a.Allotment_Type !== filterAltType) return false
       if (filterFrom    && a.Allotment_Date && a.Allotment_Date < filterFrom) return false
-      if (filterTo      && a.Allotment_Date && a.Allotment_Date > filterTo) return false
+      if (filterTo      && a.Allotment_Date && a.Allotment_Date > filterTo)   return false
       return true
     })
   }, [baseList, search, filterDept, filterQType, filterAltType, filterFrom, filterTo])
@@ -79,8 +85,16 @@ export default function AllotmentsPage() {
     })
   }, [filtered, sortKey, sortDir])
 
+  const pageData = useMemo(() => paginate(sorted, page), [sorted, page])
+
   const vacantQuarters = quarters.filter(q => q.Status === 'Vacant')
   const activeEmp      = employees.filter(e => e.Active === 'TRUE')
+
+  const activeFilters  = [filterDept, filterQType, filterAltType, filterFrom, filterTo].filter(Boolean).length
+  const activeCount    = allotments.filter(a => a.Status === 'Active').length
+  const vacatedCount   = allotments.filter(a => a.Status === 'Vacated').length
+
+  function clearFilters() { setFilterDept(''); setFilterQType(''); setFilterAltType(''); setFilterFrom(''); setFilterTo(''); setPage(1) }
 
   async function handleCreate() {
     if (!form.quarter_id || !form.emp_id || !form.allotment_date) return
@@ -106,40 +120,76 @@ export default function AllotmentsPage() {
   const f  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
   const ef = k => e => setEmpForm(p => ({ ...p, [k]: e.target.value }))
 
-  const activeFilterCount = [filterDept, filterQType, filterAltType, filterFrom, filterTo].filter(Boolean).length
-  const activeCount  = allotments.filter(a => a.Status === 'Active').length
-  const vacatedCount = allotments.filter(a => a.Status === 'Vacated').length
+  const sidebar = (
+    <>
+      <FilterSection title="Status">
+        <FilterChips
+          options={['Active', 'History']}
+          value={tab === 'active' ? 'Active' : 'History'}
+          onChange={v => { setTab(v === 'Active' ? 'active' : 'history'); setPage(1) }}
+        />
+      </FilterSection>
+
+      <FilterSection title="Department">
+        <FilterSelect
+          value={filterDept}
+          onChange={v => { setFilterDept(v); setPage(1) }}
+          options={DEPARTMENTS}
+          placeholder="All Departments"
+        />
+      </FilterSection>
+
+      <FilterSection title="Quarter Type">
+        <FilterSelect
+          value={filterQType}
+          onChange={v => { setFilterQType(v); setPage(1) }}
+          options={QUARTER_TYPES}
+          placeholder="All Types"
+        />
+      </FilterSection>
+
+      <FilterSection title="Allotment Type">
+        <FilterSelect
+          value={filterAltType}
+          onChange={v => { setFilterAltType(v); setPage(1) }}
+          options={ALLOTMENT_TYPES}
+          placeholder="All"
+        />
+      </FilterSection>
+
+      <FilterSection title="Date Range">
+        <FilterDateRange
+          fromValue={filterFrom} toValue={filterTo}
+          onFromChange={v => { setFilterFrom(v); setPage(1) }}
+          onToChange={v => { setFilterTo(v); setPage(1) }}
+        />
+      </FilterSection>
+
+      <ClearFilters onClick={clearFilters} count={activeFilters} />
+    </>
+  )
+
+  const toolbar = (
+    <div className="flex gap-2">
+      <div className="flex items-center bg-slate-100 rounded-xl p-0.5 mr-1">
+        <TabBtn active={tab === 'active'}  onClick={() => { setTab('active');  setPage(1) }} label={`Active (${activeCount})`} />
+        <TabBtn active={tab === 'history'} onClick={() => { setTab('history'); setPage(1) }} label={`History (${vacatedCount})`} />
+      </div>
+      <div className="flex-1 relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <input className="input pl-9" placeholder="Search name, quarter, dept…" value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1) }} />
+      </div>
+      <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5 whitespace-nowrap">
+        <Plus className="w-4 h-4" /> New Allotment
+      </button>
+    </div>
+  )
 
   return (
-    <div className="p-4 space-y-3">
+    <SidebarPage sidebar={sidebar} filterCount={activeFilters} toolbar={toolbar}>
 
-      {/* ── Tabs ── */}
-      <div className="flex bg-slate-100 rounded-xl p-1">
-        <TabBtn active={tab === 'active'}  onClick={() => setTab('active')}  label={`Active (${activeCount})`} />
-        <TabBtn active={tab === 'history'} onClick={() => setTab('history')} label={`History (${vacatedCount})`} />
-      </div>
-
-      {/* ── Toolbar ── */}
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input className="input pl-9" placeholder="Search by name, quarter, dept…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <button
-          onClick={() => setShowFilter(true)}
-          className={`relative w-10 h-10 flex items-center justify-center rounded-xl border ${activeFilterCount ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white'}`}
-        >
-          <Filter className={`w-4 h-4 ${activeFilterCount ? 'text-brand-600' : 'text-slate-500'}`} />
-          {activeFilterCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-600 text-white text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>
-          )}
-        </button>
-        <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5">
-          <Plus className="w-4 h-4" /> New Allotment
-        </button>
-      </div>
-
-      <p className="text-xs text-slate-400 font-medium">{sorted.length} record{sorted.length !== 1 ? 's' : ''}</p>
+      <ResultCount count={sorted.length} total={baseList.length} label="allotment" />
 
       {/* ── Table ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -147,12 +197,12 @@ export default function AllotmentsPage() {
           <table className="w-full text-sm min-w-[760px]">
             <thead>
               <tr className="bg-slate-800 text-white">
-                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide w-10">#</th>
-                <SortTh label="Quarter"    field="qtr_no"         sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortTh label="Employee"   field="emp_name"        sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortTh label="Department" field="Department"      sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide w-8">#</th>
+                <SortTh label="Quarter"    field="qtr_no"        sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Employee"   field="emp_name"       sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Department" field="Department"     sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Category</th>
-                <SortTh label="Date"       field="Allotment_Date"  sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Date"       field="Allotment_Date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Type</th>
                 <th className="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wide">Rent</th>
                 <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Status</th>
@@ -160,9 +210,9 @@ export default function AllotmentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sorted.map((a, i) => (
+              {pageData.map((a, i) => (
                 <tr key={a.Allotment_ID} className={`hover:bg-brand-50/40 transition-colors ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
-                  <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{i + 1}</td>
+                  <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{(page-1)*PER_PAGE + i + 1}</td>
                   <td className="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">{a.qtr?.Quarter_No || a.Quarter_ID}</td>
                   <td className="px-3 py-2.5 max-w-[160px]">
                     <p className="text-xs font-semibold text-slate-700 truncate">{a.emp?.Name || a.Emp_ID}</p>
@@ -180,14 +230,11 @@ export default function AllotmentsPage() {
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-center gap-1.5">
-                      <ActionBtn
-                        icon={Eye}
-                        color={a.Status === 'Active' ? 'blue' : 'slate'}
-                        title="View / Vacate"
-                        onClick={() => { setSelected(a); setVacateDate(today()) }}
-                      />
+                      <ActionBtn icon={Eye} color={a.Status === 'Active' ? 'blue' : 'slate'} title="View / Vacate"
+                        onClick={() => { setSelected(a); setVacateDate(today()) }} />
                       {a.Status === 'Active' && (
-                        <ActionBtn icon={UserMinus} color="red" title="Vacate" onClick={() => { setSelected(a); setVacateDate(today()) }} />
+                        <ActionBtn icon={UserMinus} color="red" title="Vacate"
+                          onClick={() => { setSelected(a); setVacateDate(today()) }} />
                       )}
                     </div>
                   </td>
@@ -202,18 +249,13 @@ export default function AllotmentsPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} total={sorted.length} onChange={p => { setPage(p); window.scrollTo(0,0) }} />
       </div>
 
       {/* ── New Allotment Modal ── */}
-      <Modal
-        open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }}
+      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }}
         title="New Allotment" icon={ClipboardCheck} variant="success" size="md"
-        footer={
-          <div className="flex gap-2">
-            <button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button>
-            <button className="btn-primary flex-1" onClick={handleCreate} disabled={saving}>{saving ? 'Saving…' : 'Create Allotment'}</button>
-          </div>
-        }
+        footer={<div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button><button className="btn-primary flex-1" onClick={handleCreate} disabled={saving}>{saving ? 'Saving…' : 'Create Allotment'}</button></div>}
       >
         <div className="space-y-3">
           <div>
@@ -258,23 +300,18 @@ export default function AllotmentsPage() {
 
       {/* ── Detail / Vacate Modal ── */}
       {selected && (
-        <Modal
-          open={!!selected} onClose={() => setSelected(null)}
-          title={selected.qtr?.Quarter_No || selected.Quarter_ID}
-          icon={Building2}
+        <Modal open={!!selected} onClose={() => setSelected(null)}
+          title={selected.qtr?.Quarter_No || selected.Quarter_ID} icon={Building2}
           subtitle={`${selected.qtr?.Type || ''} · ${selected.qtr?.Location || ''}`}
           badge={selected.Status === 'Active'
-            ? { label: 'Active',  cls: 'bg-emerald-400/30 text-emerald-100' }
-            : { label: 'Vacated', cls: 'bg-slate-300/30 text-slate-100' }}
-          variant={selected.Status === 'Active' ? 'default' : 'default'}
+            ? { label:'Active',  cls:'bg-emerald-400/30 text-emerald-100' }
+            : { label:'Vacated', cls:'bg-slate-300/30 text-slate-100' }}
           size="md"
           footer={selected.Status === 'Active' ? (
             <div className="space-y-2.5">
-              <div className="flex items-center gap-3">
-                <div className="flex-1">
-                  <label className="label">Vacate Date</label>
-                  <input className="input" type="date" value={vacateDate} onChange={e => setVacateDate(e.target.value)} />
-                </div>
+              <div>
+                <label className="label">Vacate Date</label>
+                <input className="input" type="date" value={vacateDate} onChange={e => setVacateDate(e.target.value)} />
               </div>
               <button className="btn-danger w-full flex items-center justify-center gap-2" onClick={handleVacate} disabled={saving}>
                 {saving ? 'Processing…' : 'Mark as Vacated'}
@@ -282,78 +319,34 @@ export default function AllotmentsPage() {
             </div>
           ) : null}
         >
-          <div className="space-y-1">
-            <ModalSection title="Quarter">
-              <FieldRow label="Quarter No." value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
-              <FieldRow label="Type"        value={selected.qtr?.Type} />
-              <FieldRow label="Location"    value={selected.qtr?.Location} />
-              <FieldRow label="Block"       value={selected.qtr?.Block} last />
-            </ModalSection>
-            <ModalSection title="Allottee">
-              <FieldRow label="Name"        value={selected.emp?.Name || selected.Emp_ID} />
-              <FieldRow label="Designation" value={selected.emp?.Designation} />
-              <FieldRow label="Department"  value={selected.emp?.Department} />
-              <FieldRow label="Category"    value={selected.emp?.Category} last />
-            </ModalSection>
-            <ModalSection title="Allotment Details">
-              <FieldRow label="Date"        value={selected.Allotment_Date} />
-              <FieldRow label="Type"        value={selected.Allotment_Type} />
-              <FieldRow label="Rent"        value={selected.Rent ? `₹${Number(selected.Rent).toLocaleString('en-IN')}` : '—'} valueClass="text-emerald-700" />
-              <FieldRow label="Status"      value={selected.Status} valueClass={selected.Status==='Active'?'text-emerald-700':'text-slate-500'} />
-              {selected.Vacated_Date && <FieldRow label="Vacated On" value={selected.Vacated_Date} />}
-              {selected.Remarks && <FieldRow label="Remarks" value={selected.Remarks} last />}
-            </ModalSection>
-          </div>
+          <ModalSection title="Quarter">
+            <FieldRow label="Quarter No." value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
+            <FieldRow label="Type"        value={selected.qtr?.Type} />
+            <FieldRow label="Location"    value={selected.qtr?.Location} />
+            <FieldRow label="Block"       value={selected.qtr?.Block} last />
+          </ModalSection>
+          <ModalSection title="Allottee">
+            <FieldRow label="Name"        value={selected.emp?.Name || selected.Emp_ID} />
+            <FieldRow label="Designation" value={selected.emp?.Designation} />
+            <FieldRow label="Department"  value={selected.emp?.Department} />
+            <FieldRow label="Category"    value={selected.emp?.Category} last />
+          </ModalSection>
+          <ModalSection title="Allotment Details">
+            <FieldRow label="Date"        value={selected.Allotment_Date} />
+            <FieldRow label="Type"        value={selected.Allotment_Type} />
+            <FieldRow label="Rent"        value={selected.Rent ? `₹${Number(selected.Rent).toLocaleString('en-IN')}` : '—'} valueClass="text-emerald-700" />
+            <FieldRow label="Status"      value={selected.Status} valueClass={selected.Status==='Active'?'text-emerald-700':'text-slate-500'} />
+            {selected.Vacated_Date && <FieldRow label="Vacated On" value={selected.Vacated_Date} />}
+            {selected.Remarks && <FieldRow label="Remarks" value={selected.Remarks} last />}
+          </ModalSection>
         </Modal>
       )}
 
-      {/* ── Filter Modal ── */}
-      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Allotments" icon={Filter} variant="info" size="md">
-        <div className="space-y-4">
-          <div>
-            <label className="label">Department</label>
-            <div className="grid grid-cols-2 gap-2">
-              {['', ...DEPARTMENTS].map(d => (
-                <button key={d} onClick={() => setFilterDept(d)}
-                  className={`py-2 px-3 rounded-xl text-sm border transition-colors ${filterDept === d ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-slate-600 border-slate-200'}`}>
-                  {d || 'All Depts'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="label">Quarter Type</label>
-            <select className="input" value={filterQType} onChange={e => setFilterQType(e.target.value)}>
-              <option value="">All Types</option>
-              {QUARTER_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Allotment Type</label>
-            <select className="input" value={filterAltType} onChange={e => setFilterAltType(e.target.value)}>
-              <option value="">All</option>
-              {ALLOTMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Date From</label>
-              <input className="input" type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Date To</label>
-              <input className="input" type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button className="btn-secondary flex-1" onClick={() => { setFilterDept(''); setFilterQType(''); setFilterAltType(''); setFilterFrom(''); setFilterTo(''); setShowFilter(false) }}>Clear All</button>
-            <button className="btn-primary flex-1" onClick={() => setShowFilter(false)}>Apply</button>
-          </div>
-        </div>
-      </Modal>
-
       {/* ── Add Employee Modal ── */}
-      <Modal open={showAddEmp} onClose={() => { setShowAddEmp(false); setEmpForm(empForm0) }} title="Add Employee" icon={User} variant="info" size="sm">
+      <Modal open={showAddEmp} onClose={() => { setShowAddEmp(false); setEmpForm(empForm0) }}
+        title="Add Employee" icon={User} variant="info" size="sm"
+        footer={<div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => { setShowAddEmp(false); setEmpForm(empForm0) }}>Cancel</button><button className="btn-primary flex-1" onClick={handleAddEmployee} disabled={saving}>{saving ? 'Saving…' : 'Add Employee'}</button></div>}
+      >
         <div className="space-y-3">
           <div><label className="label">Full Name *</label><input className="input" value={empForm.name} onChange={ef('name')} /></div>
           <div><label className="label">Designation *</label><input className="input" value={empForm.designation} onChange={ef('designation')} /></div>
@@ -370,21 +363,16 @@ export default function AllotmentsPage() {
             </select>
           </div>
         </div>
-        <div className="flex gap-2 mt-4">
-          <button className="btn-secondary flex-1" onClick={() => { setShowAddEmp(false); setEmpForm(empForm0) }}>Cancel</button>
-          <button className="btn-primary flex-1" onClick={handleAddEmployee} disabled={saving}>{saving ? 'Saving…' : 'Add Employee'}</button>
-        </div>
       </Modal>
 
-    </div>
+    </SidebarPage>
   )
 }
 
 /* ── Sub-components ── */
-
 function TabBtn({ active, onClick, label }) {
   return (
-    <button onClick={onClick} className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors ${active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
+    <button onClick={onClick} className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
       {label}
     </button>
   )
@@ -396,26 +384,23 @@ function SortTh({ label, field, sortKey, sortDir, onSort }) {
   return (
     <th onClick={() => onSort(field)}
       className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide cursor-pointer select-none hover:bg-slate-700 transition-colors whitespace-nowrap">
-      <span className="flex items-center gap-1">
-        {label}<Icon className={`w-3 h-3 ${active ? 'opacity-100' : 'opacity-30'}`} />
-      </span>
+      <span className="flex items-center gap-1">{label}<Icon className={`w-3 h-3 ${active ? 'opacity-100' : 'opacity-30'}`} /></span>
     </th>
   )
 }
 
 function AllotStatusBadge({ status }) {
-  const map = { 'Active': 'bg-emerald-100 text-emerald-700', 'Vacated': 'bg-slate-100 text-slate-500' }
+  const map = { 'Active':'bg-emerald-100 text-emerald-700', 'Vacated':'bg-slate-100 text-slate-500' }
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${map[status] || 'bg-slate-100 text-slate-600'}`}>{status}</span>
 }
 
 function ActionBtn({ icon: Icon, color, title, onClick }) {
-  const colors = { blue: 'bg-blue-50 text-blue-600 hover:bg-blue-100', red: 'bg-red-50 text-red-600 hover:bg-red-100', slate: 'bg-slate-100 text-slate-500 hover:bg-slate-200' }
+  const colors = { blue:'bg-blue-50 text-blue-600 hover:bg-blue-100', red:'bg-red-50 text-red-600 hover:bg-red-100', slate:'bg-slate-100 text-slate-500 hover:bg-slate-200' }
   return (
     <button onClick={onClick} title={title} className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${colors[color] || colors.slate}`}>
       <Icon className="w-3.5 h-3.5" />
     </button>
   )
 }
-
 
 function today() { return new Date().toISOString().split('T')[0] }

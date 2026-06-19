@@ -1,27 +1,30 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Key, Plus, Search, AlertTriangle, RotateCcw, Eye, ChevronsUpDown, ChevronUp, ChevronDown, Filter } from 'lucide-react'
+import { Key, Plus, Search, AlertTriangle, RotateCcw, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { issueKey, returnKey } from '../lib/googleSheets'
 import Modal, { ModalSection, FieldRow } from '../components/Modal'
+import SidebarPage from '../components/SidebarPage'
+import { FilterSection, FilterChips, FilterSelect, FilterToggle, ClearFilters, ResultCount } from '../components/Filters'
+import Pagination, { paginate, PER_PAGE } from '../components/Pagination'
 import { LOCATIONS, QUARTER_TYPES } from '../lib/constants'
 
 export default function KeysPage() {
   const { keys, quarters, refreshKeys, fetchAll, lastFetched } = useData()
   const { auditUser } = useAuth()
 
-  const [search,      setSearch]      = useState('')
-  const [tab,         setTab]         = useState('issued')
-  const [showNew,     setShowNew]     = useState(false)
-  const [showFilter,  setShowFilter]  = useState(false)
-  const [selected,    setSelected]    = useState(null)
-  const [saving,      setSaving]      = useState(false)
-  const [returnDate,  setReturnDate]  = useState(today())
-  const [sortKey,     setSortKey]     = useState(null)
-  const [sortDir,     setSortDir]     = useState('asc')
-  const [filterLoc,   setFilterLoc]   = useState('')
-  const [filterQType, setFilterQType] = useState('')
+  const [search,        setSearch]        = useState('')
+  const [tab,           setTab]           = useState('issued')
+  const [showNew,       setShowNew]       = useState(false)
+  const [selected,      setSelected]      = useState(null)
+  const [saving,        setSaving]        = useState(false)
+  const [returnDate,    setReturnDate]    = useState(today())
+  const [sortKey,       setSortKey]       = useState(null)
+  const [sortDir,       setSortDir]       = useState('asc')
+  const [filterLoc,     setFilterLoc]     = useState('')
+  const [filterQType,   setFilterQType]   = useState('')
   const [filterOverdue, setFilterOverdue] = useState(false)
+  const [page,          setPage]          = useState(1)
 
   const emptyForm = { quarter_id:'', held_by:'', issued_date: today(), remarks:'' }
   const [form, setForm] = useState(emptyForm)
@@ -33,6 +36,7 @@ export default function KeysPage() {
   function toggleSort(key) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('asc') }
+    setPage(1)
   }
 
   const baseList = useMemo(() => {
@@ -46,14 +50,12 @@ export default function KeysPage() {
     }))
   }, [keys, quarters, tab])
 
-  const activeFilterCount = [filterLoc, filterQType, filterOverdue ? 'y' : ''].filter(Boolean).length
-
   const filtered = useMemo(() => {
     const s = search.toLowerCase()
     return baseList.filter(k => {
       if (s && !(k.Quarter_ID?.toLowerCase().includes(s) || k.Held_By?.toLowerCase().includes(s) || k.qtr?.Quarter_No?.toLowerCase().includes(s))) return false
-      if (filterLoc   && k.qtr?.Location !== filterLoc)  return false
-      if (filterQType && k.qtr?.Type     !== filterQType) return false
+      if (filterLoc    && k.qtr?.Location !== filterLoc)  return false
+      if (filterQType  && k.qtr?.Type     !== filterQType) return false
       if (filterOverdue && k.days <= 30) return false
       return true
     })
@@ -68,6 +70,15 @@ export default function KeysPage() {
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [filtered, sortKey, sortDir])
+
+  const pageData = useMemo(() => paginate(sorted, page), [sorted, page])
+
+  const issuedCount   = keys.filter(k => k.Status === 'Issued').length
+  const returnedCount = keys.filter(k => k.Status === 'Returned').length
+  const overdueCount  = keys.filter(k => k.Status === 'Issued' && k.Issued_Date && daysSince(k.Issued_Date) > 30).length
+
+  const activeFilters = [filterLoc, filterQType, filterOverdue ? 'y' : ''].filter(Boolean).length
+  function clearFilters() { setFilterLoc(''); setFilterQType(''); setFilterOverdue(false); setPage(1) }
 
   async function handleIssue() {
     if (!form.quarter_id || !form.held_by) return
@@ -85,14 +96,65 @@ export default function KeysPage() {
 
   const f = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
 
-  const issuedCount   = keys.filter(k => k.Status === 'Issued').length
-  const returnedCount = keys.filter(k => k.Status === 'Returned').length
-  const overdueCount  = keys.filter(k => k.Status === 'Issued' && k.Issued_Date && daysSince(k.Issued_Date) > 30).length
+  const sidebar = (
+    <>
+      <FilterSection title="View">
+        <FilterChips
+          options={[
+            { label: `Issued (${issuedCount})`,   value: 'issued' },
+            { label: `Returned (${returnedCount})`, value: 'returned' },
+          ]}
+          value={tab}
+          onChange={v => { setTab(v); setPage(1) }}
+        />
+      </FilterSection>
+
+      <FilterSection title="Location">
+        <FilterSelect
+          value={filterLoc}
+          onChange={v => { setFilterLoc(v); setPage(1) }}
+          options={LOCATIONS}
+          placeholder="All Locations"
+        />
+      </FilterSection>
+
+      <FilterSection title="Quarter Type">
+        <FilterSelect
+          value={filterQType}
+          onChange={v => { setFilterQType(v); setPage(1) }}
+          options={QUARTER_TYPES}
+          placeholder="All Types"
+        />
+      </FilterSection>
+
+      <FilterSection title="Status">
+        <FilterToggle
+          label={`Overdue only${overdueCount > 0 ? ` (${overdueCount})` : ''}`}
+          value={filterOverdue}
+          onChange={v => { setFilterOverdue(v); setPage(1) }}
+        />
+      </FilterSection>
+
+      <ClearFilters onClick={clearFilters} count={activeFilters} />
+    </>
+  )
+
+  const toolbar = (
+    <div className="flex gap-2">
+      <div className="flex-1 relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <input className="input pl-9" placeholder="Search by quarter or holder…" value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1) }} />
+      </div>
+      <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5 whitespace-nowrap">
+        <Plus className="w-4 h-4" /> Issue Key
+      </button>
+    </div>
+  )
 
   return (
-    <div className="p-4 space-y-3">
+    <SidebarPage sidebar={sidebar} filterCount={activeFilters} toolbar={toolbar}>
 
-      {/* ── Overdue alert strip ── */}
       {overdueCount > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
@@ -100,28 +162,7 @@ export default function KeysPage() {
         </div>
       )}
 
-      {/* ── Tabs ── */}
-      <div className="flex bg-slate-100 rounded-xl p-1">
-        <TabBtn active={tab === 'issued'}   onClick={() => setTab('issued')}   label={`Issued (${issuedCount})`} />
-        <TabBtn active={tab === 'returned'} onClick={() => setTab('returned')} label={`Returned (${returnedCount})`} />
-      </div>
-
-      {/* ── Toolbar ── */}
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input className="input pl-9" placeholder="Search by quarter or holder…" value={search} onChange={e => setSearch(e.target.value)} />
-        </div>
-        <button onClick={() => setShowFilter(true)} className={`relative w-10 h-10 flex items-center justify-center rounded-xl border ${activeFilterCount ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white'}`}>
-          <Filter className={`w-4 h-4 ${activeFilterCount ? 'text-brand-600' : 'text-slate-500'}`} />
-          {activeFilterCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-600 text-white text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>}
-        </button>
-        <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5">
-          <Plus className="w-4 h-4" /> Issue Key
-        </button>
-      </div>
-
-      <p className="text-xs text-slate-400 font-medium">{sorted.length} record{sorted.length !== 1 ? 's' : ''}</p>
+      <ResultCount count={sorted.length} total={baseList.length} label="key record" />
 
       {/* ── Table ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -129,10 +170,10 @@ export default function KeysPage() {
           <table className="w-full text-sm min-w-[580px]">
             <thead>
               <tr className="bg-slate-800 text-white">
-                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide w-10">#</th>
-                <SortTh label="Quarter"    field="qtr_no"      sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortTh label="Held By"    field="Held_By"     sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortTh label="Issued"     field="Issued_Date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide w-8">#</th>
+                <SortTh label="Quarter"  field="qtr_no"      sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Held By"  field="Held_By"     sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Issued"   field="Issued_Date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Days</th>
                 {tab === 'returned' && <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Returned</th>}
                 <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Status</th>
@@ -140,14 +181,12 @@ export default function KeysPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sorted.map((k, i) => {
+              {pageData.map((k, i) => {
                 const overdue = k.Status === 'Issued' && k.days > 30
                 return (
-                  <tr key={k.Key_ID} className={`hover:bg-brand-50/40 transition-colors ${i % 2 === 1 ? 'bg-slate-50/60' : ''} ${overdue ? 'bg-amber-50/60' : ''}`}>
-                    <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{i + 1}</td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">
-                      {k.qtr?.Quarter_No || k.Quarter_ID}
-                    </td>
+                  <tr key={k.Key_ID} className={`hover:bg-brand-50/40 transition-colors ${overdue ? 'bg-amber-50/60' : i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
+                    <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{(page-1)*PER_PAGE + i + 1}</td>
+                    <td className="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">{k.qtr?.Quarter_No || k.Quarter_ID}</td>
                     <td className="px-3 py-2.5 text-slate-600">{k.Held_By}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{k.Issued_Date}</td>
                     <td className="px-3 py-2.5">
@@ -159,9 +198,7 @@ export default function KeysPage() {
                       )}
                     </td>
                     {tab === 'returned' && <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{k.Returned_Date || '—'}</td>}
-                    <td className="px-3 py-2.5">
-                      <KeyStatusBadge status={k.Status} overdue={overdue} />
-                    </td>
+                    <td className="px-3 py-2.5"><KeyStatusBadge status={k.Status} overdue={overdue} /></td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center justify-center gap-1.5">
                         <ActionBtn icon={Eye} color="blue" title="View Details" onClick={() => { setSelected(k); setReturnDate(today()) }} />
@@ -182,41 +219,12 @@ export default function KeysPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} total={sorted.length} onChange={p => { setPage(p); window.scrollTo(0,0) }} />
       </div>
 
-      {/* ── Filter Modal ── */}
-      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Keys" icon={Filter} variant="info" size="sm">
-        <div className="space-y-4">
-          <div>
-            <label className="label">Location</label>
-            <select className="input" value={filterLoc} onChange={e => setFilterLoc(e.target.value)}>
-              <option value="">All Locations</option>
-              {LOCATIONS.map(l => <option key={l}>{l}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Quarter Type</label>
-            <select className="input" value={filterQType} onChange={e => setFilterQType(e.target.value)}>
-              <option value="">All Types</option>
-              {QUARTER_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Show Only</label>
-            <button onClick={() => setFilterOverdue(v => !v)}
-              className={`w-full py-2.5 rounded-xl border text-sm font-semibold transition-colors ${filterOverdue ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-slate-600 border-slate-200'}`}>
-              {filterOverdue ? '✓ Overdue Only (>30 days)' : 'Overdue Only (>30 days)'}
-            </button>
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button className="btn-secondary flex-1" onClick={() => { setFilterLoc(''); setFilterQType(''); setFilterOverdue(false); setShowFilter(false) }}>Clear All</button>
-            <button className="btn-primary flex-1" onClick={() => setShowFilter(false)}>Apply</button>
-          </div>
-        </div>
-      </Modal>
-
       {/* ── Issue Key Modal ── */}
-      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }} title="Issue Key" icon={Key} variant="info" size="sm"
+      <Modal open={showNew} onClose={() => { setShowNew(false); setForm(emptyForm) }}
+        title="Issue Key" icon={Key} variant="info" size="sm"
         footer={<div className="flex gap-2"><button className="btn-secondary flex-1" onClick={() => { setShowNew(false); setForm(emptyForm) }}>Cancel</button><button className="btn-primary flex-1" onClick={handleIssue} disabled={saving}>{saving ? 'Saving…' : 'Issue Key'}</button></div>}
       >
         <div className="space-y-3">
@@ -244,16 +252,14 @@ export default function KeysPage() {
 
       {/* ── Detail / Return Modal ── */}
       {selected && (
-        <Modal
-          open={!!selected} onClose={() => setSelected(null)}
-          title={selected.qtr?.Quarter_No || selected.Quarter_ID}
-          icon={Key}
+        <Modal open={!!selected} onClose={() => setSelected(null)}
+          title={selected.qtr?.Quarter_No || selected.Quarter_ID} icon={Key}
           subtitle={selected.qtr ? `${selected.qtr.Type} · ${selected.qtr.Location}` : undefined}
           badge={selected.days > 30
-            ? { label: 'Overdue', cls: 'bg-amber-300/30 text-amber-100' }
+            ? { label:'Overdue',  cls:'bg-amber-300/30 text-amber-100' }
             : selected.Status === 'Issued'
-              ? { label: 'Issued',   cls: 'bg-blue-300/30 text-blue-100' }
-              : { label: 'Returned', cls: 'bg-slate-300/30 text-slate-100' }}
+              ? { label:'Issued',   cls:'bg-blue-300/30 text-blue-100' }
+              : { label:'Returned', cls:'bg-slate-300/30 text-slate-100' }}
           variant={selected.days > 30 ? 'warning' : 'default'}
           size="sm"
           footer={selected.Status === 'Issued' ? (
@@ -269,10 +275,10 @@ export default function KeysPage() {
           ) : null}
         >
           <ModalSection title="Key Details">
-            <FieldRow label="Quarter"   value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
-            <FieldRow label="Type"      value={selected.qtr?.Type} />
-            <FieldRow label="Location"  value={selected.qtr?.Location} />
-            <FieldRow label="Held By"   value={selected.Held_By} last />
+            <FieldRow label="Quarter"  value={selected.qtr?.Quarter_No || selected.Quarter_ID} />
+            <FieldRow label="Type"     value={selected.qtr?.Type} />
+            <FieldRow label="Location" value={selected.qtr?.Location} />
+            <FieldRow label="Held By"  value={selected.Held_By} last />
           </ModalSection>
           <ModalSection title="Timeline">
             <FieldRow label="Issued On" value={selected.Issued_Date} />
@@ -288,41 +294,30 @@ export default function KeysPage() {
         </Modal>
       )}
 
-    </div>
+    </SidebarPage>
   )
 }
 
 /* ── Sub-components ── */
-
-function TabBtn({ active, onClick, label }) {
-  return (
-    <button onClick={onClick} className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors ${active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>
-      {label}
-    </button>
-  )
-}
-
 function SortTh({ label, field, sortKey, sortDir, onSort }) {
   const active = sortKey === field
   const Icon = active ? (sortDir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown
   return (
     <th onClick={() => onSort(field)}
       className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide cursor-pointer select-none hover:bg-slate-700 transition-colors whitespace-nowrap">
-      <span className="flex items-center gap-1">
-        {label}<Icon className={`w-3 h-3 ${active ? 'opacity-100' : 'opacity-30'}`} />
-      </span>
+      <span className="flex items-center gap-1">{label}<Icon className={`w-3 h-3 ${active ? 'opacity-100' : 'opacity-30'}`} /></span>
     </th>
   )
 }
 
 function KeyStatusBadge({ status, overdue }) {
   if (overdue) return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700"><AlertTriangle className="w-3 h-3" />Overdue</span>
-  const map = { 'Issued': 'bg-blue-100 text-blue-700', 'Returned': 'bg-slate-100 text-slate-500' }
+  const map = { 'Issued':'bg-blue-100 text-blue-700', 'Returned':'bg-slate-100 text-slate-500' }
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${map[status] || 'bg-slate-100 text-slate-600'}`}>{status}</span>
 }
 
 function ActionBtn({ icon: Icon, color, title, onClick }) {
-  const colors = { blue: 'bg-blue-50 text-blue-600 hover:bg-blue-100', green: 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100', red: 'bg-red-50 text-red-600 hover:bg-red-100' }
+  const colors = { blue:'bg-blue-50 text-blue-600 hover:bg-blue-100', green:'bg-emerald-50 text-emerald-600 hover:bg-emerald-100', red:'bg-red-50 text-red-600 hover:bg-red-100' }
   return (
     <button onClick={onClick} title={title} className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors ${colors[color]}`}>
       <Icon className="w-3.5 h-3.5" />
@@ -330,5 +325,5 @@ function ActionBtn({ icon: Icon, color, title, onClick }) {
   )
 }
 
-function today()        { return new Date().toISOString().split('T')[0] }
-function daysSince(d)   { try { return Math.floor((Date.now() - new Date(d)) / 86400000) } catch { return 0 } }
+function today()      { return new Date().toISOString().split('T')[0] }
+function daysSince(d) { try { return Math.floor((Date.now() - new Date(d)) / 86400000) } catch { return 0 } }
