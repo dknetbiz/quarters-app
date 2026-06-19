@@ -101,6 +101,7 @@ export async function initializeSheetHeaders() {
     [SHEETS.ALLOTMENTS]:   ['Allotment_ID','Quarter_ID','Emp_ID','Allotment_Date','Allotment_Type','Rent','Vacated_Date','Status','Remarks'],
     [SHEETS.KEY_REGISTER]: ['Key_ID','Quarter_ID','Held_By','Issued_Date','Returned_Date','Status','Remarks'],
     [SHEETS.RENT]:         ['Rent_ID','Allotment_ID','Quarter_ID','Emp_ID','Month','Standard_Rent','Actual_Recovery','Difference','Remarks'],
+    [SHEETS.ORDERS]:       ['Order_ID','Order_No','Draft_Date','Effective_Date','Allottee_Category','Allotment_Mode','Quarter_ID','Old_Quarter_ID','Emp_ID','Entity_Name','Entity_Type','SJVN_Unit','Rent','Remarks','Status','Issued_Date','Rejected_Date','Rejected_Reason','Created_By'],
     [SHEETS.AUDIT]:        ['Timestamp','User_Email','User_Name','Action','Module','Record_ID','Old_Value','New_Value'],
   }
 
@@ -220,6 +221,91 @@ export async function addRentEntry(data, user) {
   await appendRow(SHEETS.RENT, row)
   await writeAuditLog({ ...user, action: 'ADD_RENT', module: 'Rent', recordId: id, newValue: data })
   return id
+}
+
+// ─── DRAFT ORDERS HELPERS ─────────────────────────────────────
+
+export async function getAllOrders() {
+  return getSheetData(SHEETS.ORDERS)
+}
+
+export async function createDraftOrder(data, user) {
+  const id       = generateId('ORD')
+  const today    = new Date().toISOString().split('T')[0]
+  const row = [
+    id, data.order_no, today, data.effective_date || today,
+    data.category || '', data.mode || 'New Allotment',
+    data.quarter_id || '', data.old_quarter_id || '',
+    data.emp_id || '', data.entity_name || '', data.entity_type || '',
+    data.sjvn_unit || '', data.rent || '', data.remarks || '',
+    'Draft', '', '', '', user.userName || user.userEmail || '',
+  ]
+  await appendRow(SHEETS.ORDERS, row)
+  await writeAuditLog({ ...user, action: 'CREATE_DRAFT_ORDER', module: 'Orders', recordId: id, newValue: data })
+  return id
+}
+
+export async function issueOrder(order, currentAllotments, user) {
+  let empId = order.Emp_ID
+
+  // For agency / trainee: ensure an employee record exists so allotment links work
+  if (!empId && order.Entity_Name) {
+    const deptMap = { 'Apprentice / Trainee': 'Trainees', 'Outside Agency': 'External Agency' }
+    empId = await addEmployee({
+      name:        order.Entity_Name,
+      designation: order.Entity_Type || order.Allottee_Category || 'External',
+      department:  deptMap[order.Allottee_Category] || 'External Agency',
+      category:    'External',
+    }, user)
+  }
+
+  // For Change / Renewal: vacate old allotment first
+  if (['Change','Renewal'].includes(order.Allotment_Mode) && order.Old_Quarter_ID) {
+    const oldAlt = currentAllotments.find(a => a.Quarter_ID === order.Old_Quarter_ID && a.Status === 'Active')
+    if (oldAlt) {
+      await vacateAllotment(oldAlt, order.Effective_Date || new Date().toISOString().split('T')[0], user)
+    }
+  }
+
+  // Create allotment (also marks quarter Occupied)
+  const altId = await createAllotment({
+    quarter_id:     order.Quarter_ID,
+    emp_id:         empId || '',
+    allotment_date: order.Effective_Date || new Date().toISOString().split('T')[0],
+    allotment_type: order.Allotment_Mode || 'New Allotment',
+    rent:           order.Rent || '',
+    remarks:        `Order: ${order.Order_No}. ${order.Remarks || ''}`.trim(),
+  }, user)
+
+  // Update order row status → Issued
+  const issuedDate = new Date().toISOString().split('T')[0]
+  await updateRow(SHEETS.ORDERS, order._rowIndex, buildOrderRow({ ...order, Status: 'Issued', Issued_Date: issuedDate, Rejected_Date: '', Rejected_Reason: '' }))
+  await writeAuditLog({ ...user, action: 'ISSUE_ORDER', module: 'Orders', recordId: order.Order_ID, newValue: { issuedDate, altId } })
+  return altId
+}
+
+export async function rejectOrder(order, reason, user) {
+  const rejectedDate = new Date().toISOString().split('T')[0]
+  await updateRow(SHEETS.ORDERS, order._rowIndex, buildOrderRow({ ...order, Status: 'Rejected', Issued_Date: '', Rejected_Date: rejectedDate, Rejected_Reason: reason }))
+  await writeAuditLog({ ...user, action: 'REJECT_ORDER', module: 'Orders', recordId: order.Order_ID, newValue: { reason } })
+}
+
+export async function withdrawOrder(order, user) {
+  await updateRow(SHEETS.ORDERS, order._rowIndex, buildOrderRow({ ...order, Status: 'Withdrawn', Issued_Date: '', Rejected_Date: '', Rejected_Reason: '' }))
+  await writeAuditLog({ ...user, action: 'WITHDRAW_ORDER', module: 'Orders', recordId: order.Order_ID })
+}
+
+function buildOrderRow(o) {
+  return [
+    o.Order_ID, o.Order_No, o.Draft_Date || '', o.Effective_Date || '',
+    o.Allottee_Category || '', o.Allotment_Mode || '',
+    o.Quarter_ID || '', o.Old_Quarter_ID || '',
+    o.Emp_ID || '', o.Entity_Name || '', o.Entity_Type || '',
+    o.SJVN_Unit || '', o.Rent || '', o.Remarks || '',
+    o.Status || 'Draft',
+    o.Issued_Date || '', o.Rejected_Date || '', o.Rejected_Reason || '',
+    o.Created_By || '',
+  ]
 }
 
 // ─── AUDIT LOG ────────────────────────────────────────────────

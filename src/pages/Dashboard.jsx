@@ -13,6 +13,22 @@ import Modal from '../components/Modal'
 // Canonical type ordering (suffix after "Type-")
 const TYPE_ORDER = ['D1','D','C','V','IV','B','III','II','A','I','C&D','0']
 
+// Distinct header color per type — consistent identity
+const TYPE_COLORS = {
+  D1:    'bg-slate-700',
+  D:     'bg-blue-700',
+  C:     'bg-indigo-600',
+  V:     'bg-violet-600',
+  IV:    'bg-purple-600',
+  B:     'bg-teal-600',
+  III:   'bg-cyan-700',
+  II:    'bg-sky-600',
+  A:     'bg-emerald-700',
+  I:     'bg-green-700',
+  'C&D': 'bg-lime-600',
+  '0':   'bg-amber-600',
+}
+
 
 const ORG_PALETTE = {
   NJHPS: 'from-blue-500 to-blue-700',
@@ -159,10 +175,10 @@ export default function Dashboard() {
                 const suffix = type.replace(/^Type-/i, '')
                 return (
                   <div key={type} className="rounded-xl overflow-hidden flex flex-col shadow-sm border border-slate-200">
-                    {/* Type label */}
-                    <div className="bg-slate-800 text-center py-1.5 px-1">
-                      <p className="text-[10px] font-extrabold text-white uppercase tracking-wider truncate">{suffix}</p>
-                      <p className="text-[7px] text-slate-400 leading-none mt-px">{total} total</p>
+                    {/* Type label — distinct color per type */}
+                    <div className={`text-center py-2 px-1 ${TYPE_COLORS[suffix] || 'bg-orange-600'}`}>
+                      <p className="text-sm font-extrabold text-white uppercase tracking-wider leading-none">{suffix}</p>
+                      <p className="text-[8px] text-white/60 leading-none mt-1">{total}</p>
                     </div>
                     {/* Occupied — always emerald */}
                     <button

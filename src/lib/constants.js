@@ -1,19 +1,10 @@
 // ============================================================
-// CONFIGURATION — Fill these after Google Cloud setup
+// CONFIGURATION
 // ============================================================
-
 export const CONFIG = {
-  // From Google Cloud Console → APIs & Services → Credentials
   GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_CLIENT_ID.apps.googleusercontent.com',
-
-  // Your Google Spreadsheet ID (from the URL)
-  // https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
-  SPREADSHEET_ID: import.meta.env.VITE_SPREADSHEET_ID || 'YOUR_SPREADSHEET_ID',
-
-  // Google Sheets API Key (for read operations)
-  API_KEY: import.meta.env.VITE_API_KEY || 'YOUR_API_KEY',
-
-  // Scopes needed
+  SPREADSHEET_ID:   import.meta.env.VITE_SPREADSHEET_ID   || 'YOUR_SPREADSHEET_ID',
+  API_KEY:          import.meta.env.VITE_API_KEY           || 'YOUR_API_KEY',
   SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
 }
 
@@ -26,44 +17,64 @@ export const SHEETS = {
   ALLOTMENTS:  'Allotments',
   KEY_REGISTER:'Key_Register',
   RENT:        'Rent_Recovery',
+  ORDERS:      'Draft_Orders',   // NEW — draft allotment order workflow
   AUDIT:       'Audit_Log',
 }
 
 // ============================================================
-// COLUMN DEFINITIONS — A=0, B=1, C=2 ... (0-indexed)
+// COLUMN DEFINITIONS
 // ============================================================
 export const COLS = {
-  QUARTERS: {
-    ID: 0, QUARTER_NO: 1, TYPE: 2, BLOCK: 3,
-    LOCATION: 4, STATUS: 5, REMARKS: 6
+  QUARTERS:  { ID:0, QUARTER_NO:1, TYPE:2, BLOCK:3, LOCATION:4, STATUS:5, REMARKS:6 },
+  EMPLOYEES: { ID:0, NAME:1, DESIGNATION:2, DEPARTMENT:3, CATEGORY:4, ACTIVE:5 },
+  ALLOTMENTS:{ ID:0, QUARTER_ID:1, EMP_ID:2, ALLOTMENT_DATE:3, ALLOTMENT_TYPE:4, RENT:5, VACATED_DATE:6, STATUS:7, REMARKS:8 },
+  KEY_REGISTER:{ ID:0, QUARTER_ID:1, HELD_BY:2, ISSUED_DATE:3, RETURNED_DATE:4, STATUS:5, REMARKS:6 },
+  RENT:      { ID:0, ALLOTMENT_ID:1, QUARTER_ID:2, EMP_ID:3, MONTH:4, STANDARD_RENT:5, ACTUAL_RECOVERY:6, DIFFERENCE:7, REMARKS:8 },
+  ORDERS:    {
+    ID:0, ORDER_NO:1, DRAFT_DATE:2, EFFECTIVE_DATE:3,
+    CATEGORY:4, MODE:5, QUARTER_ID:6, OLD_QUARTER_ID:7,
+    EMP_ID:8, ENTITY_NAME:9, ENTITY_TYPE:10, SJVN_UNIT:11,
+    RENT:12, REMARKS:13, STATUS:14, ISSUED_DATE:15,
+    REJECTED_DATE:16, REJECTED_REASON:17, CREATED_BY:18
   },
-  EMPLOYEES: {
-    ID: 0, NAME: 1, DESIGNATION: 2, DEPARTMENT: 3, CATEGORY: 4, ACTIVE: 5
-  },
-  ALLOTMENTS: {
-    ID: 0, QUARTER_ID: 1, EMP_ID: 2, ALLOTMENT_DATE: 3,
-    ALLOTMENT_TYPE: 4, RENT: 5, VACATED_DATE: 6, STATUS: 7, REMARKS: 8
-  },
-  KEY_REGISTER: {
-    ID: 0, QUARTER_ID: 1, HELD_BY: 2, ISSUED_DATE: 3,
-    RETURNED_DATE: 4, STATUS: 5, REMARKS: 6
-  },
-  RENT: {
-    ID: 0, ALLOTMENT_ID: 1, QUARTER_ID: 2, EMP_ID: 3,
-    MONTH: 4, STANDARD_RENT: 5, ACTUAL_RECOVERY: 6, DIFFERENCE: 7, REMARKS: 8
-  },
-  AUDIT: {
-    TIMESTAMP: 0, USER_EMAIL: 1, USER_NAME: 2, ACTION: 3,
-    MODULE: 4, RECORD_ID: 5, OLD_VALUE: 6, NEW_VALUE: 7
-  }
+  AUDIT:     { TIMESTAMP:0, USER_EMAIL:1, USER_NAME:2, ACTION:3, MODULE:4, RECORD_ID:5, OLD_VALUE:6, NEW_VALUE:7 },
 }
+
+// ============================================================
+// COMPANY & UNIT
+// ============================================================
+export const COMPANY     = 'SJVN Limited'
+export const UNIT        = 'NJHPS'
+export const UNIT_FULL   = 'National Jalvidyut Power Station'
+export const UNIT_ADDR   = 'NJHPS, Jhakri — 172 201, District Rampur Bushahr, H.P.'
 
 // ============================================================
 // DROPDOWN OPTIONS
 // ============================================================
-export const QUARTER_TYPES = ['Type-I','Type-II','Type-III','Type-IV','Type-A','Type-B','Type-C','Type-D','Type-FA','Type-FB','Type-C&D','Type-D1']
-export const LOCATIONS     = ['Jhakri','Shimla','LHEP','RHPS','Duttnagar','Kalpa']
-export const STATUSES      = ['Occupied','Vacant','Under Repair','Reserved']
-export const CATEGORIES    = ['General','SC','ST','OBC']
-export const ALLOTMENT_TYPES = ['Allotment','First Change','Second Change','Women Quota','Medical Ground','Compassionate']
-export const DEPARTMENTS   = ['NJHPS','RHPS','LHEP','CISF','BSNL','FA','Other']
+export const QUARTER_TYPES   = ['Type-I','Type-II','Type-III','Type-IV','Type-A','Type-B','Type-C','Type-D','Type-FA','Type-FB','Type-C&D','Type-D1']
+export const LOCATIONS       = ['Jhakri','Kotla','Jeori','Nathpa','Shimla','LHEP','RHPS','Duttnagar','Kalpa','Other']
+export const STATUSES        = ['Occupied','Vacant','Under Repair','Reserved']
+export const CATEGORIES      = ['General','SC','ST','OBC','EWS']
+export const ALLOTMENT_TYPES = ['New Allotment','First Change','Second Change','Women Quota','Medical Ground','Compassionate','Renewal']
+
+// SJVN Departments / Units
+export const DEPARTMENTS = ['NJHPS','RHPS','LHEP','SJVN-HO','NAGJP','WANGTU','NATHPA (PSS)','CISF','BSNL','FA','Trainees','External Agency','Other']
+
+// SJVN units (for inter-unit allotments)
+export const SJVN_UNITS  = ['NJHPS','RHPS','LHEP','SJVN-HO (Shimla)','NAGJP (Naitwar)','Wangtu HEP','Khirvire WEP','Luhri-I HEP','Other SJVN Unit']
+
+// Outside agency types
+export const ENTITY_TYPES = [
+  'Central School (KV)','Police (HP Police)','Post Office','CISF',
+  'Intelligence Bureau (IB)','Bank (SBI / Other)','Hospital / Dispensary',
+  'Court / Judiciary','Revenue Department','PWD / HPPWD','Other Govt. Agency',
+]
+
+// Allottee categories (for order form)
+export const ALLOTTEE_CATEGORIES = ['SJVN Employee','Outside Agency','Apprentice / Trainee']
+
+// Order workflow modes
+export const ORDER_MODES = ['New Allotment','Change','Renewal','Surrender']
+
+// Order status
+export const ORDER_STATUSES = ['Draft','Issued','Rejected','Withdrawn']
