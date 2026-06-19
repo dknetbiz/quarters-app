@@ -37,14 +37,19 @@ function Chip({ active, onClick, children, extra = '' }) {
   )
 }
 
-/** Compact select dropdown for sidebar */
+/** Compact select dropdown for sidebar.
+ *  options can be string[] or {value, label}[] */
 export function FilterSelect({ value, onChange, options, placeholder = 'All' }) {
   return (
     <select
       className="w-full border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white text-slate-700"
       value={value} onChange={e => onChange(e.target.value)}>
       <option value="">{placeholder}</option>
-      {options.map(o => <option key={o}>{o}</option>)}
+      {options.map(o => {
+        const v = typeof o === 'string' ? o : o.value
+        const l = typeof o === 'string' ? o : o.label
+        return <option key={v} value={v}>{l}</option>
+      })}
     </select>
   )
 }

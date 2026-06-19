@@ -5,24 +5,18 @@ import {
   MapPin, TrendingUp, Key, IndianRupee, ClipboardList, Users, UserCheck
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
+import Modal from '../components/Modal'
+import { typeGroup, typeDisplay, GROUP_ORDER } from '../lib/constants'
 
-// Canonical type ordering (suffix after "Type-")
-const TYPE_ORDER = ['D1','D','C','V','IV','B','III','II','A','I','C&D','0']
-
-// Distinct header color per type — consistent identity
-const TYPE_COLORS = {
-  D1:    'bg-slate-700',
-  D:     'bg-blue-700',
-  C:     'bg-indigo-600',
-  V:     'bg-violet-600',
-  IV:    'bg-purple-600',
-  B:     'bg-teal-600',
-  III:   'bg-cyan-700',
-  II:    'bg-sky-600',
-  A:     'bg-emerald-700',
-  I:     'bg-green-700',
-  'C&D': 'bg-lime-600',
-  '0':   'bg-amber-600',
+const GROUP_COLORS = {
+  A:  'bg-emerald-700',
+  B:  'bg-blue-700',
+  C:  'bg-indigo-600',
+  D:  'bg-violet-700',
+  D1: 'bg-slate-700',
+  CD: 'bg-teal-600',
+  FA: 'bg-amber-600',
+  FB: 'bg-orange-600',
 }
 
 
@@ -36,25 +30,13 @@ const ORG_PALETTE = {
   Other: 'from-slate-400 to-slate-600',
 }
 
-function sortTypes(entries) {
-  return [...entries].sort((a, b) => {
-    const sA = a.type.replace(/^Type-/i, '')
-    const sB = b.type.replace(/^Type-/i, '')
-    const iA = TYPE_ORDER.indexOf(sA)
-    const iB = TYPE_ORDER.indexOf(sB)
-    if (iA !== -1 && iB !== -1) return iA - iB
-    if (iA !== -1) return -1
-    if (iB !== -1) return 1
-    return a.type.localeCompare(b.type)
-  })
-}
-
 export default function Dashboard() {
   const {
     stats, quarters, allotments, employees, keys,
     loadingData, fetchAll, lastFetched,
   } = useData()
   const navigate = useNavigate()
+  const [groupModal, setGroupModal] = useState(null)
 
   useEffect(() => { if (!lastFetched) fetchAll() }, [])
 
@@ -63,13 +45,22 @@ export default function Dashboard() {
   const occupancyPct     = stats.total ? Math.round(stats.occupied / stats.total * 100) : 0
   const today            = new Date().toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
 
-  // Per-type stats, canonical order
-  const typeStats = useMemo(() => sortTypes(
-    Object.entries(stats.byType).map(([type, total]) => {
-      const occ = quarters.filter(q => q.Type === type && q.Status === 'Occupied').length
-      return { type, total, occ, vac: total - occ }
+  // Per-type stats rolled up into groups
+  const groupStats = useMemo(() => {
+    const map = {}
+    Object.entries(stats.byType).forEach(([type, total]) => {
+      const occ   = quarters.filter(q => q.Type === type && q.Status === 'Occupied').length
+      const g     = typeGroup(type)
+      if (!map[g]) map[g] = { group: g, items: [], total: 0, occ: 0, vac: 0 }
+      map[g].items.push({ type, display: typeDisplay(type), total, occ, vac: total - occ })
+      map[g].total += total
+      map[g].occ   += occ
+      map[g].vac   += (total - occ)
     })
-  ), [stats.byType, quarters])
+    // Sort items within each group by display label (numeric-aware)
+    Object.values(map).forEach(g => g.items.sort((a, b) => a.display.localeCompare(b.display, undefined, { numeric: true })))
+    return GROUP_ORDER.filter(g => map[g]).map(g => map[g])
+  }, [stats.byType, quarters])
 
   // Org stats
   const orgStats = useMemo(() => {
@@ -119,76 +110,57 @@ export default function Dashboard() {
           <StatCard icon={Wrench}      label="Repair"   value={stats.repair}   accent="bg-amber-500"  iconBg="bg-amber-50"  iconColor="text-amber-600"  onClick={() => navigate('/quarters?status=Under Repair')} />
         </div>
 
-        {/* ── Quarter type cards — green=occupied, red=vacant ─ */}
-        {typeStats.length > 0 && (
+        {/* ── Quarter type GROUP cards ─────────────────────── */}
+        {groupStats.length > 0 && (
           <div>
             <SectionLabel>Quarter Types</SectionLabel>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5">
-              {typeStats.map(({ type, total, occ, vac }) => {
-                const suffix = type.replace(/^Type-/i, '')
-                return (
-                  <div key={type} className="rounded-xl overflow-hidden flex flex-col shadow-sm border border-slate-200">
-                    {/* Type label — distinct color per type */}
-                    <div className={`text-center py-2 px-1 ${TYPE_COLORS[suffix] || 'bg-orange-600'}`}>
-                      <p className="text-sm font-extrabold text-white uppercase tracking-wider leading-none">{suffix}</p>
-                      <p className="text-[8px] text-white/60 leading-none mt-1">{total}</p>
-                    </div>
-                    {/* Occupied — always emerald */}
-                    <button
-                      onClick={() => navigate(`/quarters?type=${encodeURIComponent(type)}&status=Occupied`)}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 flex flex-col items-center justify-center py-2.5 sm:py-3 transition-colors relative overflow-hidden"
-                    >
-                      <span className="absolute text-4xl font-black text-white/10 select-none pointer-events-none leading-none">{suffix}</span>
-                      <p className="relative text-xl sm:text-2xl font-extrabold text-white leading-none">{occ}</p>
-                      <p className="relative text-[7px] text-emerald-200 font-bold uppercase tracking-wide mt-0.5">Occ</p>
-                    </button>
-                    {/* Vacant — always rose */}
-                    <button
-                      onClick={() => navigate(`/quarters?type=${encodeURIComponent(type)}&status=Vacant`)}
-                      className="flex-1 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 flex flex-col items-center justify-center py-2 transition-colors"
-                    >
-                      <p className="text-lg sm:text-xl font-extrabold text-white leading-none">{vac}</p>
-                      <p className="text-[7px] text-rose-200 font-bold uppercase tracking-wide mt-0.5">Vac</p>
-                    </button>
-                  </div>
-                )
-              })}
+            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-1.5">
+              {groupStats.map(({ group, total, occ, vac, items }) => (
+                <div key={group} className="rounded-xl overflow-hidden flex flex-col shadow-sm border border-slate-200">
+                  {/* Group header */}
+                  <button onClick={() => setGroupModal({ group, items })}
+                    className={`text-center py-2 px-1 ${GROUP_COLORS[group] || 'bg-slate-700'} active:opacity-80`}>
+                    <p className="text-sm font-extrabold text-white leading-none">Type {group}</p>
+                    <p className="text-[8px] text-white/60 leading-none mt-1">{total} total</p>
+                  </button>
+                  {/* Occupied */}
+                  <button onClick={() => navigate(`/quarters?group=${group}&status=Occupied`)}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 flex flex-col items-center justify-center py-2.5 transition-colors">
+                    <p className="text-xl font-extrabold text-white leading-none">{occ}</p>
+                    <p className="text-[7px] text-emerald-200 font-bold uppercase mt-0.5">Occ</p>
+                  </button>
+                  {/* Vacant */}
+                  <button onClick={() => navigate(`/quarters?group=${group}&status=Vacant`)}
+                    className="flex-1 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 flex flex-col items-center justify-center py-2 transition-colors">
+                    <p className="text-lg font-extrabold text-white leading-none">{vac}</p>
+                    <p className="text-[7px] text-rose-200 font-bold uppercase mt-0.5">Vac</p>
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* ── Vacant quarters — type-wise summary ──────────── */}
-        {typeStats.some(t => t.vac > 0) && (
+        {/* ── Vacant by Group ──────────────────────────────── */}
+        {groupStats.some(g => g.vac > 0) && (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3.5">
             <div className="flex items-center justify-between mb-2.5">
-              <p className="text-sm font-bold text-slate-800">Vacant by Type</p>
+              <p className="text-sm font-bold text-slate-800">Vacant by Type Group</p>
               <span className="text-lg font-extrabold text-rose-500">{stats.vacant}</span>
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-              {typeStats
-                .filter(t => t.vac > 0)
-                .map(({ type, vac, total }) => {
-                  const suffix = type.replace(/^Type-/i, '')
-                  return (
-                    <button
-                      key={type}
-                      onClick={() => navigate(`/quarters?type=${encodeURIComponent(type)}&status=Vacant`)}
-                      className="relative bg-rose-50 border border-rose-100 rounded-lg overflow-hidden active:bg-rose-100 transition-colors min-h-[72px] flex flex-col items-center justify-center"
-                    >
-                      {/* Centred watermark */}
-                      <span className="absolute inset-0 flex items-center justify-center text-4xl font-black text-rose-200/60 select-none pointer-events-none leading-none">
-                        {suffix}
-                      </span>
-                      {/* Content */}
-                      <div className="relative z-10 flex flex-col items-center py-2 px-1">
-                        <p className="text-lg font-extrabold text-rose-600 leading-none">{vac}</p>
-                        <p className="text-[7px] text-rose-400 font-semibold mt-0.5">/{total}</p>
-                        <p className="text-[7px] text-rose-300 font-bold uppercase tracking-wide mt-px truncate max-w-full">{suffix}</p>
-                      </div>
-                    </button>
-                  )
-                })
-              }
+              {groupStats.filter(g => g.vac > 0).map(({ group, vac, total }) => (
+                <button key={group}
+                  onClick={() => navigate(`/quarters?group=${group}&status=Vacant`)}
+                  className="relative bg-rose-50 border border-rose-100 rounded-lg overflow-hidden active:bg-rose-100 transition-colors min-h-[72px] flex flex-col items-center justify-center">
+                  <span className="absolute inset-0 flex items-center justify-center text-3xl font-black text-rose-200/60 select-none pointer-events-none leading-none">{group}</span>
+                  <div className="relative z-10 flex flex-col items-center py-2 px-1">
+                    <p className="text-lg font-extrabold text-rose-600 leading-none">{vac}</p>
+                    <p className="text-[7px] text-rose-400 font-semibold mt-0.5">/{total}</p>
+                    <p className="text-[7px] text-rose-300 font-bold uppercase tracking-wide mt-px">Type {group}</p>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -311,6 +283,39 @@ export default function Dashboard() {
         )}
 
       </div>
+
+      {/* ── Group drill-down modal ─────────────────────────── */}
+      <Modal open={!!groupModal} onClose={() => setGroupModal(null)}
+        title={groupModal ? `Type ${groupModal.group} — Breakdown` : ''}
+        icon={Building2} size="sm">
+        {groupModal && (
+          <div className="space-y-2">
+            {groupModal.items.map(({ type, display, total, occ, vac }) => (
+              <div key={type} className="bg-slate-50 rounded-xl p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${GROUP_COLORS[groupModal.group] || 'bg-slate-700'}`}>
+                    <span className="text-xs font-extrabold text-white">{display}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Type {display}</p>
+                    <p className="text-[10px] text-slate-400">{type} · {total} total</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { navigate(`/quarters?type=${encodeURIComponent(type)}&status=Occupied`); setGroupModal(null) }}
+                    className="flex-1 bg-emerald-50 text-emerald-700 rounded-lg py-1.5 text-xs font-semibold border border-emerald-200 hover:bg-emerald-100 transition-colors">
+                    {occ} Occupied
+                  </button>
+                  <button onClick={() => { navigate(`/quarters?type=${encodeURIComponent(type)}&status=Vacant`); setGroupModal(null) }}
+                    className="flex-1 bg-rose-50 text-rose-700 rounded-lg py-1.5 text-xs font-semibold border border-rose-200 hover:bg-rose-100 transition-colors">
+                    {vac} Vacant
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
 
     </div>
   )

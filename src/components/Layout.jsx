@@ -1,16 +1,17 @@
 import React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Building2, Key, IndianRupee, ClipboardList, LogOut, RefreshCw, FileText } from 'lucide-react'
+import { LayoutDashboard, Building2, Key, IndianRupee, ClipboardList, LogOut, RefreshCw, FileText, Upload } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 
 const NAV = [
-  { to: '/',           icon: LayoutDashboard, label: 'Home'       },
-  { to: '/quarters',   icon: Building2,       label: 'Quarters'   },
-  { to: '/allotments', icon: ClipboardList,   label: 'Allotments' },
-  { to: '/keys',       icon: Key,             label: 'Keys'       },
-  { to: '/rent',       icon: IndianRupee,     label: 'Rent'       },
-  { to: '/reports',    icon: FileText,        label: 'Reports'    },
+  { to: '/',            icon: LayoutDashboard, label: 'Home'       },
+  { to: '/quarters',    icon: Building2,       label: 'Quarters'   },
+  { to: '/allotments',  icon: ClipboardList,   label: 'Allotments' },
+  { to: '/keys',        icon: Key,             label: 'Keys'       },
+  { to: '/rent',        icon: IndianRupee,     label: 'Rent'       },
+  { to: '/reports',     icon: FileText,        label: 'Reports'    },
+  { to: '/bulk-upload', icon: Upload,          label: 'Upload'     },
 ]
 
 export default function Layout({ children }) {

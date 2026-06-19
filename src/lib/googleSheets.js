@@ -195,6 +195,28 @@ export async function createAllotment(data, user) {
   return id
 }
 
+/** Create a historical (already-vacated) allotment record — does NOT touch quarter status */
+export async function createHistoricalAllotment(data, user) {
+  const id = generateId('ALT')
+  const row = [
+    id, data.quarter_id, data.emp_id,
+    data.allotment_date, data.allotment_type,
+    data.rent || '', data.vacated_date || '', 'Vacated', data.remarks || ''
+  ]
+  await appendRow(SHEETS.ALLOTMENTS, row)
+  await writeAuditLog({ ...user, action: 'CREATE_HISTORICAL_ALLOTMENT', module: 'Allotments', recordId: id, newValue: data })
+  return id
+}
+
+/** Append multiple rows in a single API call (for bulk upload) */
+export async function bulkAppend(sheetName, rows) {
+  if (!rows.length) return
+  return sheetsRequest(
+    `/values/${encodeURIComponent(sheetName + '!A1')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    { method: 'POST', body: JSON.stringify({ values: rows }) }
+  )
+}
+
 export async function vacateAllotment(allotment, vacatedDate, user) {
   const row = [
     allotment.Allotment_ID, allotment.Quarter_ID, allotment.Emp_ID,

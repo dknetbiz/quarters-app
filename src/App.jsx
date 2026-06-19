@@ -10,6 +10,7 @@ import AllotmentsPage from './pages/AllotmentsPage'
 import KeysPage from './pages/KeysPage'
 import RentPage from './pages/RentPage'
 import ReportsPage from './pages/ReportsPage'
+import BulkUploadPage from './pages/BulkUploadPage'
 import { ShieldOff } from 'lucide-react'
 
 function AccessDeniedScreen({ user, logout }) {
@@ -58,7 +59,8 @@ function DataRoutes() {
         <Route path="/allotments" element={<AllotmentsPage />} />
         <Route path="/keys"       element={<KeysPage />} />
         <Route path="/rent"       element={<RentPage />} />
-        <Route path="/reports"    element={<ReportsPage />} />
+        <Route path="/reports"     element={<ReportsPage />} />
+        <Route path="/bulk-upload" element={<BulkUploadPage />} />
         <Route path="*"           element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

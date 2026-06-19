@@ -49,9 +49,48 @@ export const UNIT_FULL   = 'National Jalvidyut Power Station'
 export const UNIT_ADDR   = 'NJHPS, Jhakri — 172 201, District Rampur Bushahr, H.P.'
 
 // ============================================================
+// TYPE MASTER
+// id       — value stored in the sheet (never change once data exists)
+// display  — short label shown in UI (1, 2, A, CD …)
+// group    — logical grouping; multiple stored types can belong to one group
+//            e.g. Type-I, Type-II and Type-A all belong to group 'A'
+// ============================================================
+export const TYPE_MASTER = [
+  { id: 'Type-I',   display: '1',  group: 'A'  },
+  { id: 'Type-II',  display: '2',  group: 'A'  },
+  { id: 'Type-A',   display: 'A',  group: 'A'  },
+  { id: 'Type-III', display: '3',  group: 'B'  },
+  { id: 'Type-IV',  display: '4',  group: 'B'  },
+  { id: 'Type-B',   display: 'B',  group: 'B'  },
+  { id: 'Type-C',   display: 'C',  group: 'C'  },
+  { id: 'Type-D',   display: 'D',  group: 'D'  },
+  { id: 'Type-D1',  display: 'D1', group: 'D1' },
+  { id: 'Type-C&D', display: 'CD', group: 'CD' },
+  { id: 'Type-FA',  display: 'FA', group: 'FA' },
+  { id: 'Type-FB',  display: 'FB', group: 'FB' },
+]
+
+export const GROUP_ORDER = ['A', 'B', 'C', 'D', 'D1', 'CD', 'FA', 'FB']
+
+/** Short UI label for a stored type id (e.g. 'Type-I' → '1') */
+export function typeDisplay(id) {
+  return TYPE_MASTER.find(t => t.id === id)?.display ?? id
+}
+/** Group key for a stored type id (e.g. 'Type-I' → 'A') */
+export function typeGroup(id) {
+  return TYPE_MASTER.find(t => t.id === id)?.group ?? id.replace(/^Type-/i, '')
+}
+/** All stored type ids that belong to a group */
+export function getGroupTypes(group) {
+  return TYPE_MASTER.filter(t => t.group === group).map(t => t.id)
+}
+/** Unique groups that actually have data (for filter chips) */
+export const TYPE_GROUPS = [...new Set(TYPE_MASTER.map(t => t.group))]
+
+// ============================================================
 // DROPDOWN OPTIONS
 // ============================================================
-export const QUARTER_TYPES   = ['Type-I','Type-II','Type-III','Type-IV','Type-A','Type-B','Type-C','Type-D','Type-FA','Type-FB','Type-C&D','Type-D1']
+export const QUARTER_TYPES   = TYPE_MASTER.map(t => t.id)   // raw ids for sheet storage
 export const LOCATIONS       = ['Jhakri','Kotla','Jeori','Nathpa','Shimla','LHEP','RHPS','Duttnagar','Kalpa','Other']
 export const STATUSES        = ['Occupied','Vacant','Under Repair','Reserved']
 export const CATEGORIES      = ['General','SC','ST','OBC','EWS']

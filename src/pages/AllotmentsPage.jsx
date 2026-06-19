@@ -4,7 +4,7 @@ import { Building2, User, ClipboardCheck, Calendar } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
-import { createAllotment, vacateAllotment, addEmployee } from '../lib/googleSheets'
+import { createAllotment, createHistoricalAllotment, vacateAllotment, addEmployee } from '../lib/googleSheets'
 import { ALLOTMENT_TYPES, CATEGORIES, DEPARTMENTS, QUARTER_TYPES } from '../lib/constants'
 import Modal, { ModalSection, FieldRow } from '../components/Modal'
 import SidebarPage from '../components/SidebarPage'
@@ -32,7 +32,7 @@ export default function AllotmentsPage() {
   const [filterTo,      setFilterTo]      = useState('')
   const [page,          setPage]          = useState(1)
 
-  const emptyForm = { quarter_id:'', emp_id:'', allotment_date: today(), allotment_type:'Allotment', rent:'', remarks:'' }
+  const emptyForm = { quarter_id:'', emp_id:'', allotment_date: today(), allotment_type:'Allotment', rent:'', remarks:'', is_historical: false, vacated_date: today() }
   const [form, setForm] = useState(emptyForm)
   const empForm0 = { name:'', designation:'', department:'NJHPS', category:'General' }
   const [empForm, setEmpForm] = useState(empForm0)
@@ -98,8 +98,18 @@ export default function AllotmentsPage() {
 
   async function handleCreate() {
     if (!form.quarter_id || !form.emp_id || !form.allotment_date) return
+    if (form.is_historical && !form.vacated_date) return
     setSaving(true)
-    try { await createAllotment(form, auditUser); await Promise.all([refreshAllotments(), refreshQuarters()]); setShowNew(false); setForm(emptyForm) }
+    try {
+      if (form.is_historical) {
+        await createHistoricalAllotment(form, auditUser)
+        await refreshAllotments()
+      } else {
+        await createAllotment(form, auditUser)
+        await Promise.all([refreshAllotments(), refreshQuarters()])
+      }
+      setShowNew(false); setForm(emptyForm)
+    }
     catch(e) { alert('Error: ' + e.message) } finally { setSaving(false) }
   }
 
@@ -259,10 +269,10 @@ export default function AllotmentsPage() {
       >
         <div className="space-y-3">
           <div>
-            <label className="label">Quarter (Vacant) *</label>
+            <label className="label">{form.is_historical ? 'Quarter *' : 'Quarter (Vacant) *'}</label>
             <select className="input" value={form.quarter_id} onChange={f('quarter_id')}>
-              <option value="">Select vacant quarter</option>
-              {vacantQuarters.map(q => <option key={q.Quarter_ID} value={q.Quarter_ID}>{q.Quarter_No} · {q.Type} · {q.Location}</option>)}
+              <option value="">Select quarter</option>
+              {(form.is_historical ? quarters : vacantQuarters).map(q => <option key={q.Quarter_ID} value={q.Quarter_ID}>{q.Quarter_No} · {q.Type} · {q.Location}</option>)}
             </select>
           </div>
           <div>
@@ -294,6 +304,29 @@ export default function AllotmentsPage() {
           <div>
             <label className="label">Remarks</label>
             <input className="input" placeholder="Optional" value={form.remarks} onChange={f('remarks')} />
+          </div>
+
+          {/* Historical entry toggle */}
+          <div className={`rounded-xl border p-3 space-y-2.5 ${form.is_historical ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+            <button type="button" onClick={() => setForm(p => ({ ...p, is_historical: !p.is_historical }))}
+              className="w-full flex items-center justify-between text-sm">
+              <div>
+                <p className={`font-semibold ${form.is_historical ? 'text-amber-800' : 'text-slate-600'}`}>Historical Entry</p>
+                <p className={`text-xs mt-0.5 ${form.is_historical ? 'text-amber-600' : 'text-slate-400'}`}>
+                  Allotment already ended — record for audit
+                </p>
+              </div>
+              <div className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${form.is_historical ? 'bg-amber-500' : 'bg-slate-300'}`}>
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${form.is_historical ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </div>
+            </button>
+            {form.is_historical && (
+              <div>
+                <label className="label">Vacate Date *</label>
+                <input className="input" type="date" value={form.vacated_date} onChange={f('vacated_date')} />
+                <p className="text-[11px] text-amber-600 mt-1">Quarter status will NOT be auto-changed in historical mode.</p>
+              </div>
+            )}
           </div>
         </div>
       </Modal>

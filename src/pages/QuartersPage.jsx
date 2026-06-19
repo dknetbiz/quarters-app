@@ -4,7 +4,7 @@ import { Plus, Search, Building2, Pencil, ChevronsUpDown, ChevronUp, ChevronDown
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { addQuarter, updateQuarter } from '../lib/googleSheets'
-import { QUARTER_TYPES, LOCATIONS, STATUSES } from '../lib/constants'
+import { QUARTER_TYPES, LOCATIONS, STATUSES, TYPE_MASTER, TYPE_GROUPS, GROUP_ORDER, typeDisplay, typeGroup, getGroupTypes } from '../lib/constants'
 import Modal from '../components/Modal'
 import SidebarPage from '../components/SidebarPage'
 import { FilterSection, FilterChips, FilterSelect, ClearFilters, ResultCount } from '../components/Filters'
@@ -23,6 +23,7 @@ export default function QuartersPage() {
   const [searchParams] = useSearchParams()
 
   const [search,       setSearch]       = useState('')
+  const [filterGroup,  setFilterGroup]  = useState(searchParams.get('group')  || '')
   const [filterType,   setFilterType]   = useState(searchParams.get('type')   || '')
   const [filterLoc,    setFilterLoc]    = useState(searchParams.get('loc')    || '')
   const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || '')
@@ -46,11 +47,12 @@ export default function QuartersPage() {
   const filtered = useMemo(() => quarters.filter(q => {
     const s = search.toLowerCase()
     return (!search || q.Quarter_No?.toLowerCase().includes(s) || q.Block?.toLowerCase().includes(s))
+      && (!filterGroup  || typeGroup(q.Type) === filterGroup)
       && (!filterType   || q.Type === filterType)
       && (!filterLoc    || q.Location === filterLoc)
       && (!filterStatus || q.Status === filterStatus)
       && (!filterBlock  || q.Block?.toLowerCase().includes(filterBlock.toLowerCase()))
-  }), [quarters, search, filterType, filterLoc, filterStatus, filterBlock])
+  }), [quarters, search, filterGroup, filterType, filterLoc, filterStatus, filterBlock])
 
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
     const va = a[sortKey] || '', vb = b[sortKey] || ''
@@ -59,9 +61,9 @@ export default function QuartersPage() {
 
   const pageData = useMemo(() => paginate(sorted, page), [sorted, page])
 
-  const activeFilters = [filterType, filterLoc, filterStatus, filterBlock].filter(Boolean).length
+  const activeFilters = [filterGroup, filterType, filterLoc, filterStatus, filterBlock].filter(Boolean).length
 
-  function clearFilters() { setFilterType(''); setFilterLoc(''); setFilterStatus(''); setFilterBlock(''); setPage(1) }
+  function clearFilters() { setFilterGroup(''); setFilterType(''); setFilterLoc(''); setFilterStatus(''); setFilterBlock(''); setPage(1) }
 
   async function handleSaveNew() {
     if (!form.quarter_no || !form.type || !form.location) return
@@ -93,12 +95,24 @@ export default function QuartersPage() {
         />
       </FilterSection>
 
-      <FilterSection title="Quarter Type">
+      <FilterSection title="Type Group">
+        <FilterChips
+          options={GROUP_ORDER}
+          value={filterGroup}
+          onChange={v => { setFilterGroup(v); setFilterType(''); setPage(1) }}
+          allLabel="All"
+        />
+      </FilterSection>
+
+      <FilterSection title="Individual Type">
         <FilterSelect
           value={filterType}
           onChange={v => { setFilterType(v); setPage(1) }}
-          options={QUARTER_TYPES}
-          placeholder="All Types"
+          options={(filterGroup ? getGroupTypes(filterGroup) : QUARTER_TYPES).map(id => ({
+            value: id,
+            label: `Type ${typeDisplay(id)} (${id})`
+          }))}
+          placeholder={filterGroup ? `All in group ${filterGroup}` : 'All Types'}
         />
       </FilterSection>
 
@@ -163,7 +177,7 @@ export default function QuartersPage() {
                   <tr key={q.Quarter_ID} className={`hover:bg-brand-50/40 transition-colors ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
                     <td className="px-3 py-2.5 text-xs text-slate-400 font-medium">{rowNum}</td>
                     <td className="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">{q.Quarter_No}</td>
-                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{q.Type}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap" title={q.Type}>Type {typeDisplay(q.Type)}</td>
                     <td className="px-3 py-2.5 text-slate-600">{q.Location}</td>
                     <td className="px-3 py-2.5 text-slate-500 text-center">{q.Block || '—'}</td>
                     <td className="px-3 py-2.5"><StatusBadge status={q.Status} /></td>
@@ -227,7 +241,7 @@ function QuarterForm({ form, setForm }) {
           <label className="label">Type *</label>
           <select className="input" value={form.type} onChange={f('type')}>
             <option value="">Select type</option>
-            {QUARTER_TYPES.map(t => <option key={t}>{t}</option>)}
+            {TYPE_MASTER.map(t => <option key={t.id} value={t.id}>Type {t.display} ({t.id})</option>)}
           </select>
         </div>
         <div>
