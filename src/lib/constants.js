@@ -56,21 +56,23 @@ export const UNIT_ADDR   = 'NJHPS, Jhakri — 172 201, District Rampur Bushahr, 
 //            e.g. Type-I, Type-II and Type-A all belong to group 'A'
 // ============================================================
 export const TYPE_MASTER = [
-  { id: 'Type-I',   display: '1',  group: 'A'  },
-  { id: 'Type-II',  display: '2',  group: 'A'  },
-  { id: 'Type-A',   display: 'A',  group: 'A'  },
-  { id: 'Type-III', display: '3',  group: 'B'  },
-  { id: 'Type-IV',  display: '4',  group: 'B'  },
-  { id: 'Type-B',   display: 'B',  group: 'B'  },
-  { id: 'Type-C',   display: 'C',  group: 'C'  },
-  { id: 'Type-D',   display: 'D',  group: 'D'  },
-  { id: 'Type-D1',  display: 'D1', group: 'D1' },
-  { id: 'Type-C&D', display: 'CD', group: 'CD' },
-  { id: 'Type-FA',  display: 'FA', group: 'FA' },
-  { id: 'Type-FB',  display: 'FB', group: 'FB' },
+  { id: 'Type-I',   display: '1',   group: 'A'  },
+  { id: 'Type-II',  display: '2',   group: 'A'  },
+  { id: 'Type-A',   display: 'A',   group: 'A'  },
+  { id: 'Type-0C',  display: '0C',  group: 'A'  },  // converted 0/C&D rooms — A-equivalent per Rule 4(b)
+  { id: 'Type-III', display: '3',   group: 'B'  },
+  { id: 'Type-B',   display: 'B',   group: 'B'  },
+  { id: 'Type-IV',  display: '4',   group: 'C'  },  // Rule 4(b): MIG equivalent → C
+  { id: 'Type-C',   display: 'C',   group: 'C'  },
+  { id: 'Type-D',   display: 'D',   group: 'D'  },
+  { id: 'Type-D1',  display: 'D1',  group: 'D1' },
+  { id: 'Type-C&D', display: 'CD',  group: 'CD' },
+  { id: 'Type-0',   display: '0',   group: '0'  },  // "0"/unclassified (non-family C&D single, EWS/Type-I at Parwanoo)
+  { id: 'Type-FA',  display: 'FA',  group: 'FA' },
+  { id: 'Type-FB',  display: 'FB',  group: 'FB' },
 ]
 
-export const GROUP_ORDER = ['A', 'B', 'C', 'D', 'D1', 'CD', 'FA', 'FB']
+export const GROUP_ORDER = ['A', 'B', 'C', 'D', 'D1', 'CD', '0', 'FA', 'FB']
 
 /** Short UI label for a stored type id (e.g. 'Type-I' → '1') */
 export function typeDisplay(id) {
