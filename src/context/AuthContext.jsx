@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { loadGoogleAuth, initTokenClient, requestToken, getUserInfo, getToken, getStoredUser, revokeToken } from '../lib/auth'
-import { initializeSheetHeaders } from '../lib/googleSheets'
+import { initializeSheetHeaders, migrateSheetHeaders } from '../lib/googleSheets'
 
 const AuthContext = createContext(null)
 
@@ -23,6 +23,7 @@ export function AuthProvider({ children }) {
             const info = await getUserInfo(response.access_token)
             setUser(info)
             try { await initializeSheetHeaders() } catch(e) { console.warn('Sheet init:', e.message) }
+            try { await migrateSheetHeaders()    } catch(e) { console.warn('Sheet migrate:', e.message) }
           },
           (err) => console.error('Auth error:', err)
         )
@@ -43,6 +44,7 @@ export function AuthProvider({ children }) {
       const info = await getUserInfo(response.access_token)
       setUser(info)
       try { await initializeSheetHeaders() } catch(e) {}
+      try { await migrateSheetHeaders()    } catch(e) {}
     } catch (e) {
       console.error('Login failed:', e)
     } finally {

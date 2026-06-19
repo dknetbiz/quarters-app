@@ -104,6 +104,31 @@ export async function writeAuditLog({ userEmail, userName, action, module, recor
   ])
 }
 
+// ─── MIGRATE MISSING COLUMN HEADERS (for existing sheets) ────
+// Safe to run on any sheet: reads existing headers, only appends what's missing.
+export async function migrateSheetHeaders() {
+  const required = {
+    [SHEETS.EMPLOYEES]: ['Grade_Level', 'Seniority_Date', 'Emp_No'],
+  }
+  for (const [sheet, cols] of Object.entries(required)) {
+    try {
+      const data = await getRawValues(`${sheet}!1:1`)
+      const existing = (data[0] || []).map(h => (h || '').trim())
+      let pos = existing.length
+      for (const col of cols) {
+        if (!existing.includes(col)) {
+          const letter = String.fromCharCode(65 + pos)   // A=65
+          await updateCell(sheet, `${letter}1`, col)
+          existing.push(col)
+          pos++
+        }
+      }
+    } catch (e) {
+      console.warn(`Header migration skipped for ${sheet}:`, e.message)
+    }
+  }
+}
+
 // ─── GENERATE ID ──────────────────────────────────────────────
 export function generateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
