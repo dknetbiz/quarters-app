@@ -59,7 +59,7 @@ export const TYPE_MASTER = [
   { id: 'Type-I',   display: '1',   group: 'A'  },
   { id: 'Type-II',  display: '2',   group: 'A'  },
   { id: 'Type-A',   display: 'A',   group: 'A'  },
-  { id: 'Type-0C',  display: '0C',  group: 'A'  },  // converted 0/C&D rooms — A-equivalent per Rule 4(b)
+  { id: 'Type-0C',  display: '0C',  group: '0'  },  // converted 0/C&D rooms — in unclassified (0) group
   { id: 'Type-III', display: '3',   group: 'B'  },
   { id: 'Type-B',   display: 'B',   group: 'B'  },
   { id: 'Type-IV',  display: '4',   group: 'C'  },  // Rule 4(b): MIG equivalent → C

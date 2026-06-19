@@ -174,6 +174,15 @@ export async function addEmployee(data, user) {
   return id
 }
 
+export async function updateEmployee(rowIndex, data, oldData, user) {
+  const row = [
+    data.Emp_ID, data.Name, data.Designation, data.Department,
+    data.Category, data.Active, data.Grade_Level || '', data.Seniority_Date || ''
+  ]
+  await updateRow(SHEETS.EMPLOYEES, rowIndex, row)
+  await writeAuditLog({ ...user, action: 'UPDATE_EMPLOYEE', module: 'Employees', recordId: data.Emp_ID, oldValue: oldData, newValue: data })
+}
+
 // ─── ALLOTMENT HELPERS ────────────────────────────────────────
 export async function getAllAllotments() {
   return getSheetData(SHEETS.ALLOTMENTS)
