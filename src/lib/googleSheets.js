@@ -226,7 +226,7 @@ export async function addRentEntry(data, user) {
 // ─── DRAFT ORDERS HELPERS ─────────────────────────────────────
 
 export async function getAllOrders() {
-  return getSheetData(SHEETS.ORDERS)
+  try { return await getSheetData(SHEETS.ORDERS) } catch { return [] }
 }
 
 export async function createDraftOrder(data, user) {
@@ -310,5 +310,5 @@ function buildOrderRow(o) {
 
 // ─── AUDIT LOG ────────────────────────────────────────────────
 export async function getAuditLog() {
-  return getSheetData(SHEETS.AUDIT)
+  try { return await getSheetData(SHEETS.AUDIT) } catch { return [] }
 }

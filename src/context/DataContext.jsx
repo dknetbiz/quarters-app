@@ -21,13 +21,16 @@ export function DataProvider({ children }) {
     if (!user) return
     setLoadingData(true); setError(null)
     try {
-      const [q, e, a, k, r, o, al] = await Promise.all([
+      const results = await Promise.allSettled([
         getAllQuarters(), getAllEmployees(), getAllAllotments(),
         getAllKeys(), getAllRent(), getAllOrders(), getAuditLog()
       ])
+      const [q, e, a, k, r, o, al] = results.map(r => r.status === 'fulfilled' ? r.value : [])
       setQuarters(q); setEmployees(e); setAllotments(a)
       setKeys(k); setRent(r); setOrders(o); setAuditLog(al)
       setLastFetched(new Date())
+      const failed = results.filter(r => r.status === 'rejected')
+      if (failed.length) console.warn('Some sheets failed to load:', failed.map(f => f.reason?.message))
     } catch (err) { setError(err.message) }
     finally { setLoadingData(false) }
   }, [user])
