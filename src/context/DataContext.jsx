@@ -29,8 +29,16 @@ export function DataProvider({ children }) {
       setQuarters(q); setEmployees(e); setAllotments(a)
       setKeys(k); setRent(r); setOrders(o); setAuditLog(al)
       setLastFetched(new Date())
-      const failed = results.filter(r => r.status === 'rejected')
-      if (failed.length) console.warn('Some sheets failed to load:', failed.map(f => f.reason?.message))
+
+      // Detect access-denied: core sheets all failed with a permission/not-found error
+      const coreResults = results.slice(0, 3)
+      const allCoreFailed = coreResults.every(r => r.status === 'rejected')
+      if (allCoreFailed) {
+        const msg = results[0].reason?.message || ''
+        if (msg.includes('403') || msg.includes('permission') || msg.includes('PERMISSION_DENIED') || msg.includes('not found')) {
+          setError('ACCESS_DENIED')
+        }
+      }
     } catch (err) { setError(err.message) }
     finally { setLoadingData(false) }
   }, [user])
