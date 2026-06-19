@@ -9,6 +9,7 @@ import QuartersPage from './pages/QuartersPage'
 import AllotmentsPage from './pages/AllotmentsPage'
 import KeysPage from './pages/KeysPage'
 import RentPage from './pages/RentPage'
+import ReportsPage from './pages/ReportsPage'
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -32,6 +33,7 @@ function AppRoutes() {
           <Route path="/allotments" element={<AllotmentsPage />} />
           <Route path="/keys"       element={<KeysPage />} />
           <Route path="/rent"       element={<RentPage />} />
+          <Route path="/reports"    element={<ReportsPage />} />
           <Route path="*"           element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

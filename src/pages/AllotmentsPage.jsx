@@ -1,24 +1,30 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Plus, Search, ClipboardList, UserCheck, UserX, UserMinus, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Search, Filter, ClipboardList, UserCheck, UserX, UserMinus, Eye, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { createAllotment, vacateAllotment, addEmployee } from '../lib/googleSheets'
-import { ALLOTMENT_TYPES, CATEGORIES, DEPARTMENTS } from '../lib/constants'
+import { ALLOTMENT_TYPES, CATEGORIES, DEPARTMENTS, QUARTER_TYPES } from '../lib/constants'
 import Modal from '../components/Modal'
 
 export default function AllotmentsPage() {
   const { allotments, quarters, employees, refreshAllotments, refreshQuarters, refreshEmployees, fetchAll, lastFetched } = useData()
   const { auditUser } = useAuth()
 
-  const [search,     setSearch]     = useState('')
-  const [tab,        setTab]        = useState('active')
-  const [showNew,    setShowNew]    = useState(false)
-  const [showAddEmp, setShowAddEmp] = useState(false)
-  const [selected,   setSelected]   = useState(null)
-  const [saving,     setSaving]     = useState(false)
-  const [vacateDate, setVacateDate] = useState(today())
-  const [sortKey,    setSortKey]    = useState(null)
-  const [sortDir,    setSortDir]    = useState('asc')
+  const [search,       setSearch]       = useState('')
+  const [tab,          setTab]          = useState('active')
+  const [showNew,      setShowNew]      = useState(false)
+  const [showAddEmp,   setShowAddEmp]   = useState(false)
+  const [showFilter,   setShowFilter]   = useState(false)
+  const [selected,     setSelected]     = useState(null)
+  const [saving,       setSaving]       = useState(false)
+  const [vacateDate,   setVacateDate]   = useState(today())
+  const [sortKey,      setSortKey]      = useState(null)
+  const [sortDir,      setSortDir]      = useState('asc')
+  const [filterDept,   setFilterDept]   = useState('')
+  const [filterQType,  setFilterQType]  = useState('')
+  const [filterAltType,setFilterAltType]= useState('')
+  const [filterFrom,   setFilterFrom]   = useState('')
+  const [filterTo,     setFilterTo]     = useState('')
 
   const emptyForm = { quarter_id:'', emp_id:'', allotment_date: today(), allotment_type:'Allotment', rent:'', remarks:'' }
   const [form, setForm] = useState(emptyForm)
@@ -45,15 +51,22 @@ export default function AllotmentsPage() {
 
   const filtered = useMemo(() => {
     const s = search.toLowerCase()
-    if (!s) return baseList
-    return baseList.filter(a =>
-      a.Quarter_ID?.toLowerCase().includes(s) ||
-      a.Emp_ID?.toLowerCase().includes(s) ||
-      a.emp?.Name?.toLowerCase().includes(s) ||
-      a.qtr?.Quarter_No?.toLowerCase().includes(s) ||
-      a.emp?.Department?.toLowerCase().includes(s)
-    )
-  }, [baseList, search])
+    return baseList.filter(a => {
+      if (s && !(
+        a.Quarter_ID?.toLowerCase().includes(s) ||
+        a.Emp_ID?.toLowerCase().includes(s) ||
+        a.emp?.Name?.toLowerCase().includes(s) ||
+        a.qtr?.Quarter_No?.toLowerCase().includes(s) ||
+        a.emp?.Department?.toLowerCase().includes(s)
+      )) return false
+      if (filterDept    && a.emp?.Department !== filterDept) return false
+      if (filterQType   && a.qtr?.Type !== filterQType) return false
+      if (filterAltType && a.Allotment_Type !== filterAltType) return false
+      if (filterFrom    && a.Allotment_Date && a.Allotment_Date < filterFrom) return false
+      if (filterTo      && a.Allotment_Date && a.Allotment_Date > filterTo) return false
+      return true
+    })
+  }, [baseList, search, filterDept, filterQType, filterAltType, filterFrom, filterTo])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -92,6 +105,7 @@ export default function AllotmentsPage() {
   const f  = k => e => setForm(p => ({ ...p, [k]: e.target.value }))
   const ef = k => e => setEmpForm(p => ({ ...p, [k]: e.target.value }))
 
+  const activeFilterCount = [filterDept, filterQType, filterAltType, filterFrom, filterTo].filter(Boolean).length
   const activeCount  = allotments.filter(a => a.Status === 'Active').length
   const vacatedCount = allotments.filter(a => a.Status === 'Vacated').length
 
@@ -110,6 +124,15 @@ export default function AllotmentsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input className="input pl-9" placeholder="Search by name, quarter, dept…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <button
+          onClick={() => setShowFilter(true)}
+          className={`relative w-10 h-10 flex items-center justify-center rounded-xl border ${activeFilterCount ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white'}`}
+        >
+          <Filter className={`w-4 h-4 ${activeFilterCount ? 'text-brand-600' : 'text-slate-500'}`} />
+          {activeFilterCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-600 text-white text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>
+          )}
+        </button>
         <button onClick={() => setShowNew(true)} className="btn-primary flex items-center gap-1.5">
           <Plus className="w-4 h-4" /> New Allotment
         </button>
@@ -260,6 +283,51 @@ export default function AllotmentsPage() {
             </div>
           )
         })()}
+      </Modal>
+
+      {/* ── Filter Modal ── */}
+      <Modal open={showFilter} onClose={() => setShowFilter(false)} title="Filter Allotments">
+        <div className="space-y-4">
+          <div>
+            <label className="label">Department</label>
+            <div className="grid grid-cols-2 gap-2">
+              {['', ...DEPARTMENTS].map(d => (
+                <button key={d} onClick={() => setFilterDept(d)}
+                  className={`py-2 px-3 rounded-xl text-sm border transition-colors ${filterDept === d ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-slate-600 border-slate-200'}`}>
+                  {d || 'All Depts'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="label">Quarter Type</label>
+            <select className="input" value={filterQType} onChange={e => setFilterQType(e.target.value)}>
+              <option value="">All Types</option>
+              {QUARTER_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Allotment Type</label>
+            <select className="input" value={filterAltType} onChange={e => setFilterAltType(e.target.value)}>
+              <option value="">All</option>
+              {ALLOTMENT_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Date From</label>
+              <input className="input" type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Date To</label>
+              <input className="input" type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-secondary flex-1" onClick={() => { setFilterDept(''); setFilterQType(''); setFilterAltType(''); setFilterFrom(''); setFilterTo(''); setShowFilter(false) }}>Clear All</button>
+            <button className="btn-primary flex-1" onClick={() => setShowFilter(false)}>Apply</button>
+          </div>
+        </div>
       </Modal>
 
       {/* ── Add Employee Modal ── */}

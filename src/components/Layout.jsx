@@ -1,15 +1,16 @@
 import React from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Building2, Key, IndianRupee, ClipboardList, LogOut, RefreshCw } from 'lucide-react'
+import { LayoutDashboard, Building2, Key, IndianRupee, ClipboardList, LogOut, RefreshCw, FileText } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 
 const NAV = [
-  { to: '/',           icon: LayoutDashboard, label: 'Dashboard'  },
+  { to: '/',           icon: LayoutDashboard, label: 'Home'       },
   { to: '/quarters',   icon: Building2,       label: 'Quarters'   },
   { to: '/allotments', icon: ClipboardList,   label: 'Allotments' },
   { to: '/keys',       icon: Key,             label: 'Keys'       },
   { to: '/rent',       icon: IndianRupee,     label: 'Rent'       },
+  { to: '/reports',    icon: FileText,        label: 'Reports'    },
 ]
 
 export default function Layout({ children }) {
@@ -17,7 +18,7 @@ export default function Layout({ children }) {
   const { fetchAll, loadingData, lastFetched } = useData()
   const location = useLocation()
 
-  const currentLabel = NAV.find(n => n.to === location.pathname)?.label || 'NJHPS Quarters'
+  const currentLabel = NAV.find(n => n.to === location.pathname)?.label || 'NJHPS Accommodation'
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
@@ -28,10 +29,11 @@ export default function Layout({ children }) {
 
           {/* Title */}
           <div>
+            <p className="text-brand-400 text-[9px] font-bold tracking-widest uppercase leading-none">NJHPS Jhakri</p>
             <h1 className="font-semibold text-base leading-tight">{currentLabel}</h1>
             {lastFetched && (
-              <p className="text-brand-300 text-[11px]">
-                Updated {lastFetched.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              <p className="text-brand-300 text-[10px]">
+                Synced {lastFetched.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
               </p>
             )}
           </div>
@@ -78,17 +80,17 @@ export default function Layout({ children }) {
               to={to}
               end={to === '/'}
               className={({ isActive }) =>
-                `flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
+                `flex-1 flex flex-col items-center gap-0.5 py-1.5 text-[9px] font-medium transition-colors ${
                   isActive ? 'text-brand-700' : 'text-slate-400'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <div className={`w-12 h-7 flex items-center justify-center rounded-full transition-all duration-200 ${
+                  <div className={`w-9 h-6 flex items-center justify-center rounded-full transition-all duration-200 ${
                     isActive ? 'bg-brand-100' : ''
                   }`}>
-                    <Icon className={`w-5 h-5 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
+                    <Icon className={`w-4 h-4 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
                   </div>
                   <span className={isActive ? 'font-semibold' : ''}>{label}</span>
                 </>

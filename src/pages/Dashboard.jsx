@@ -7,31 +7,12 @@ import {
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { createAllotment } from '../lib/googleSheets'
-import { ALLOTMENT_TYPES } from '../lib/constants'
+import { ALLOTMENT_TYPES, QUARTER_TYPES, DEPARTMENTS } from '../lib/constants'
 import Modal from '../components/Modal'
 
 // Canonical type ordering (suffix after "Type-")
 const TYPE_ORDER = ['D1','D','C','V','IV','B','III','II','A','I','C&D','0']
 
-// Gradient palette — indexed so same type always gets same colour
-const TYPE_GRADIENTS = [
-  'from-slate-700 to-slate-900',   // D1
-  'from-blue-700 to-blue-900',     // D
-  'from-indigo-600 to-indigo-800', // C
-  'from-violet-600 to-violet-800', // V
-  'from-purple-600 to-purple-800', // IV
-  'from-teal-600 to-teal-800',     // B
-  'from-cyan-600 to-cyan-800',     // III
-  'from-sky-600 to-sky-800',       // II
-  'from-emerald-600 to-emerald-800',// A
-  'from-green-600 to-green-800',   // I
-  'from-lime-600 to-lime-800',     // C&D
-  'from-amber-600 to-amber-800',   // 0
-  'from-orange-600 to-orange-800', // overflow
-  'from-rose-600 to-rose-800',
-  'from-pink-600 to-pink-800',
-  'from-fuchsia-600 to-fuchsia-800',
-]
 
 const ORG_PALETTE = {
   NJHPS: 'from-blue-500 to-blue-700',
@@ -84,13 +65,6 @@ export default function Dashboard() {
       return { type, total, occ, vac: total - occ }
     })
   ), [stats.byType, quarters])
-
-  // Colour index stable by canonical order
-  const typeGradient = (type) => {
-    const suffix = type.replace(/^Type-/i, '')
-    const i = TYPE_ORDER.indexOf(suffix)
-    return TYPE_GRADIENTS[i !== -1 ? i : TYPE_ORDER.length + typeStats.findIndex(t => t.type === type)]
-  }
 
   // Org stats
   const orgStats = useMemo(() => {
@@ -176,41 +150,37 @@ export default function Dashboard() {
           <StatCard icon={Wrench}      label="Repair"   value={stats.repair}   accent="bg-amber-500"  iconBg="bg-amber-50"  iconColor="text-amber-600"  onClick={() => navigate('/quarters?status=Under Repair')} />
         </div>
 
-        {/* ── Quarter type cards — 6-col grid, watermark bg ─── */}
+        {/* ── Quarter type cards — green=occupied, red=vacant ─ */}
         {typeStats.length > 0 && (
           <div>
             <SectionLabel>Quarter Types</SectionLabel>
-            <div className="grid grid-cols-6 gap-1.5">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5">
               {typeStats.map(({ type, total, occ, vac }) => {
-                const grad   = typeGradient(type)
                 const suffix = type.replace(/^Type-/i, '')
                 return (
-                  <div key={type} className={`relative bg-gradient-to-br ${grad} rounded-xl overflow-hidden min-h-[96px] flex flex-col`}>
-                    {/* Centred watermark */}
-                    <span className="absolute inset-0 flex items-center justify-center text-5xl font-black text-white/20 select-none pointer-events-none leading-none">
-                      {suffix}
-                    </span>
-                    {/* Content */}
-                    <div className="relative z-10 p-2 flex flex-col flex-1">
-                      <p className="text-[8px] font-bold text-white uppercase tracking-wide leading-none">{suffix}</p>
-                      <p className="text-lg font-extrabold text-white leading-none mt-1 flex-1">{total}</p>
-                      <div className="flex gap-0.5 mt-auto">
-                        <button
-                          onClick={() => setTypeModal({ type, mode: 'occupied' })}
-                          className="flex-1 bg-white/20 active:bg-white/40 rounded py-0.5 text-center transition-colors"
-                        >
-                          <p className="text-[9px] font-extrabold text-white leading-none">{occ}</p>
-                          <p className="text-[6px] text-white/60 uppercase mt-px">Occ</p>
-                        </button>
-                        <button
-                          onClick={() => setTypeModal({ type, mode: 'vacant' })}
-                          className="flex-1 bg-white/20 active:bg-white/40 rounded py-0.5 text-center transition-colors"
-                        >
-                          <p className="text-[9px] font-extrabold text-white leading-none">{vac}</p>
-                          <p className="text-[6px] text-white/60 uppercase mt-px">Vac</p>
-                        </button>
-                      </div>
+                  <div key={type} className="rounded-xl overflow-hidden flex flex-col shadow-sm border border-slate-200">
+                    {/* Type label */}
+                    <div className="bg-slate-800 text-center py-1.5 px-1">
+                      <p className="text-[10px] font-extrabold text-white uppercase tracking-wider truncate">{suffix}</p>
+                      <p className="text-[7px] text-slate-400 leading-none mt-px">{total} total</p>
                     </div>
+                    {/* Occupied — always emerald */}
+                    <button
+                      onClick={() => setTypeModal({ type, mode: 'occupied' })}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 flex flex-col items-center justify-center py-2.5 sm:py-3 transition-colors relative overflow-hidden"
+                    >
+                      <span className="absolute text-4xl font-black text-white/10 select-none pointer-events-none leading-none">{suffix}</span>
+                      <p className="relative text-xl sm:text-2xl font-extrabold text-white leading-none">{occ}</p>
+                      <p className="relative text-[7px] text-emerald-200 font-bold uppercase tracking-wide mt-0.5">Occ</p>
+                    </button>
+                    {/* Vacant — always rose */}
+                    <button
+                      onClick={() => setTypeModal({ type, mode: 'vacant' })}
+                      className="flex-1 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 flex flex-col items-center justify-center py-2 transition-colors"
+                    >
+                      <p className="text-lg sm:text-xl font-extrabold text-white leading-none">{vac}</p>
+                      <p className="text-[7px] text-rose-200 font-bold uppercase tracking-wide mt-0.5">Vac</p>
+                    </button>
                   </div>
                 )
               })}
@@ -225,7 +195,7 @@ export default function Dashboard() {
               <p className="text-sm font-bold text-slate-800">Vacant by Type</p>
               <span className="text-lg font-extrabold text-rose-500">{stats.vacant}</span>
             </div>
-            <div className="grid grid-cols-6 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
               {typeStats
                 .filter(t => t.vac > 0)
                 .map(({ type, vac, total }) => {
