@@ -1,6 +1,6 @@
 import React from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Building2, Shield, Database, Smartphone } from 'lucide-react'
+import { Building2, Shield, Database, Smartphone, Info } from 'lucide-react'
 
 export default function LoginPage() {
   const { login, loading } = useAuth()
@@ -41,6 +41,16 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Continue with Google'}
           </button>
 
+          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5">
+            <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-semibold text-amber-800">Google verification notice</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Google may show "This app isn't verified". This is expected — click <strong>Continue</strong> to proceed. Only authorised SJVN/NJHPS accounts can sign in.
+              </p>
+            </div>
+          </div>
+
           <div className="mt-6 pt-6 border-t border-slate-100 grid grid-cols-3 gap-3">
             {[
               { icon: Shield, label: 'Secure' },
@@ -58,7 +68,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-brand-300 text-xs mt-6">
-          HPPC · Jhakri · Himachal Pradesh
+          SJVN Ltd · NJHPS · Jhakri · Himachal Pradesh
         </p>
       </div>
     </div>

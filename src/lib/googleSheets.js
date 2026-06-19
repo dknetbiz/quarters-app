@@ -93,6 +93,14 @@ export function generateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
 }
 
+// ─── CREATE MISSING SHEET TAB ─────────────────────────────────
+async function createSheetTab(title) {
+  await sheetsRequest(':batchUpdate', {
+    method: 'POST',
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] })
+  })
+}
+
 // ─── INITIALIZE SHEET HEADERS ────────────────────────────────
 export async function initializeSheetHeaders() {
   const headers = {
@@ -107,7 +115,7 @@ export async function initializeSheetHeaders() {
 
   for (const [sheet, cols] of Object.entries(headers)) {
     try {
-      const existing = await getRawValues(`${sheet}!A1:H1`)
+      const existing = await getRawValues(`${sheet}!A1:A1`)
       if (!existing.length) {
         await sheetsRequest(
           `/values/${sheet}!A1:${String.fromCharCode(64 + cols.length)}1?valueInputOption=RAW`,
@@ -115,7 +123,21 @@ export async function initializeSheetHeaders() {
         )
       }
     } catch (e) {
-      console.warn(`Could not init headers for ${sheet}:`, e.message)
+      // Sheet tab doesn't exist — create it then write headers
+      if (e.message?.includes('Unable to parse range') || e.message?.includes('not found')) {
+        try {
+          await createSheetTab(sheet)
+          await sheetsRequest(
+            `/values/${sheet}!A1:${String.fromCharCode(64 + cols.length)}1?valueInputOption=RAW`,
+            { method: 'PUT', body: JSON.stringify({ values: [cols] }) }
+          )
+          console.log(`Created sheet tab: ${sheet}`)
+        } catch (e2) {
+          console.warn(`Could not create sheet ${sheet}:`, e2.message)
+        }
+      } else {
+        console.warn(`Could not init headers for ${sheet}:`, e.message)
+      }
     }
   }
 }
