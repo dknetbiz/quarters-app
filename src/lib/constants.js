@@ -26,7 +26,7 @@ export const SHEETS = {
 // ============================================================
 export const COLS = {
   QUARTERS:  { ID:0, QUARTER_NO:1, TYPE:2, BLOCK:3, LOCATION:4, STATUS:5, REMARKS:6 },
-  EMPLOYEES: { ID:0, NAME:1, DESIGNATION:2, DEPARTMENT:3, CATEGORY:4, ACTIVE:5 },
+  EMPLOYEES: { ID:0, NAME:1, DESIGNATION:2, DEPARTMENT:3, CATEGORY:4, ACTIVE:5, GRADE_LEVEL:6, SENIORITY_DATE:7 },
   ALLOTMENTS:{ ID:0, QUARTER_ID:1, EMP_ID:2, ALLOTMENT_DATE:3, ALLOTMENT_TYPE:4, RENT:5, VACATED_DATE:6, STATUS:7, REMARKS:8 },
   KEY_REGISTER:{ ID:0, QUARTER_ID:1, HELD_BY:2, ISSUED_DATE:3, RETURNED_DATE:4, STATUS:5, REMARKS:6 },
   RENT:      { ID:0, ALLOTMENT_ID:1, QUARTER_ID:2, EMP_ID:3, MONTH:4, STANDARD_RENT:5, ACTUAL_RECOVERY:6, DIFFERENCE:7, REMARKS:8 },
@@ -94,7 +94,36 @@ export const QUARTER_TYPES   = TYPE_MASTER.map(t => t.id)   // raw ids for sheet
 export const LOCATIONS       = ['Jhakri','Kotla','Jeori','Nathpa','Shimla','LHEP','RHPS','Duttnagar','Kalpa','Other']
 export const STATUSES        = ['Occupied','Vacant','Under Repair','Reserved']
 export const CATEGORIES      = ['General','SC','ST','OBC','EWS']
-export const ALLOTMENT_TYPES = ['New Allotment','First Change','Second Change','Women Quota','Medical Ground','Compassionate','Renewal']
+export const ALLOTMENT_TYPES = ['New Allotment','First Change','Second Change','Management Quota','O&M Quota','Medical Ground','Compassionate','Renewal']
+
+// ============================================================
+// EMPLOYEE GRADE LEVELS (Rule 5 — SJVN Allotment Policy)
+// ============================================================
+export const EMPLOYEE_LEVELS = [
+  'W1','W2','W3','W4','W5','W6',    // Workmen (Upto W6) → entitled Type A
+  'W7','W8','W9','W10','W11',       // Sr. Workmen (W7+) → entitled Type B
+  'S1','S2','S3','S4',              // Supervisors → entitled Type B
+  'E1','E2','E3','E4',              // Jr. Executives → entitled Type B
+  'E5','E6',                        // Mid Executives → entitled Type C
+  'E7',                             // Sr. Executive → entitled Type D
+  'E8',                             // Top Management → entitled Type D1
+]
+
+// Grade level → entitled quarter type group (Rule 5 of NJHPS Allotment Policy)
+export const GRADE_ENTITLEMENT = {
+  W1:'A', W2:'A', W3:'A', W4:'A', W5:'A', W6:'A',
+  W7:'B', W8:'B', W9:'B', W10:'B', W11:'B',
+  S1:'B', S2:'B', S3:'B', S4:'B',
+  E1:'B', E2:'B', E3:'B', E4:'B',
+  E5:'C', E6:'C',
+  E7:'D',
+  E8:'D1',
+}
+
+/** Entitled quarter type group for a grade level — returns null if level unknown */
+export function getEntitledGroup(level) {
+  return GRADE_ENTITLEMENT[level] || null
+}
 
 // SJVN Departments / Units
 export const DEPARTMENTS = ['NJHPS','RHPS','LHEP','SJVN-HO','NAGJP','WANGTU','NATHPA (PSS)','CISF','BSNL','FA','Trainees','External Agency','Other']

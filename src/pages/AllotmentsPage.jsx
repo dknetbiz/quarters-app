@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { createAllotment, createHistoricalAllotment, vacateAllotment, addEmployee } from '../lib/googleSheets'
-import { ALLOTMENT_TYPES, CATEGORIES, DEPARTMENTS, QUARTER_TYPES } from '../lib/constants'
+import { ALLOTMENT_TYPES, CATEGORIES, DEPARTMENTS, QUARTER_TYPES, EMPLOYEE_LEVELS, getEntitledGroup, typeGroup, typeDisplay } from '../lib/constants'
 import Modal, { ModalSection, FieldRow } from '../components/Modal'
 import SidebarPage from '../components/SidebarPage'
 import { FilterSection, FilterChips, FilterSelect, FilterDateRange, FilterToggle, ClearFilters, ResultCount } from '../components/Filters'
@@ -34,7 +34,7 @@ export default function AllotmentsPage() {
 
   const emptyForm = { quarter_id:'', emp_id:'', allotment_date: today(), allotment_type:'Allotment', rent:'', remarks:'', is_historical: false, vacated_date: today() }
   const [form, setForm] = useState(emptyForm)
-  const empForm0 = { name:'', designation:'', department:'NJHPS', category:'General' }
+  const empForm0 = { name:'', designation:'', department:'NJHPS', category:'General', grade_level:'', seniority_date:'' }
   const [empForm, setEmpForm] = useState(empForm0)
 
   useEffect(() => { if (!lastFetched) fetchAll() }, [])
@@ -89,6 +89,22 @@ export default function AllotmentsPage() {
 
   const vacantQuarters = quarters.filter(q => q.Status === 'Vacant')
   const activeEmp      = employees.filter(e => e.Active === 'TRUE')
+
+  // Policy entitlement checks for the new allotment form
+  const selectedNewEmp = form.emp_id ? activeEmp.find(e => e.Emp_ID === form.emp_id) : null
+  const selectedNewQtr = form.quarter_id
+    ? (form.is_historical ? quarters : vacantQuarters).find(q => q.Quarter_ID === form.quarter_id)
+    : null
+  const entitledGroup       = selectedNewEmp?.Grade_Level ? getEntitledGroup(selectedNewEmp.Grade_Level) : null
+  const allottingGroup      = selectedNewQtr ? typeGroup(selectedNewQtr.Type) : null
+  const entitlementMismatch = entitledGroup && allottingGroup && entitledGroup !== allottingGroup
+
+  // Count prior allotments for this employee to enforce change limit (Rule 8.6)
+  const empPriorAllotments = form.emp_id
+    ? allotments.filter(a => a.Emp_ID === form.emp_id)
+    : []
+  const changeCount = empPriorAllotments.filter(a => a.Allotment_Type === 'First Change' || a.Allotment_Type === 'Second Change').length
+  const atChangeLimit = changeCount >= 2
 
   const activeFilters  = [filterDept, filterQType, filterAltType, filterFrom, filterTo].filter(Boolean).length
   const activeCount    = allotments.filter(a => a.Status === 'Active').length
@@ -301,6 +317,31 @@ export default function AllotmentsPage() {
               {ALLOTMENT_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
+
+          {/* Policy compliance indicators */}
+          {selectedNewEmp && selectedNewEmp.Grade_Level && (
+            <div className={`rounded-xl border px-3 py-2.5 text-xs ${entitlementMismatch ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
+              <p className={`font-semibold ${entitlementMismatch ? 'text-rose-700' : 'text-emerald-700'}`}>
+                {entitlementMismatch ? 'Entitlement Mismatch' : 'Entitlement OK'}
+              </p>
+              <p className={`mt-0.5 ${entitlementMismatch ? 'text-rose-600' : 'text-emerald-600'}`}>
+                Grade <strong>{selectedNewEmp.Grade_Level}</strong> is entitled to Type <strong>{entitledGroup}</strong>.
+                {allottingGroup && entitlementMismatch && <span> Allotting Type <strong>{allottingGroup}</strong> requires CGM approval (Rule 5).</span>}
+              </p>
+            </div>
+          )}
+          {atChangeLimit && !form.is_historical && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs">
+              <p className="font-semibold text-amber-700">Change Limit Reached</p>
+              <p className="text-amber-600 mt-0.5">Employee has used both allowed changes (Rule 8.6). Further changes require special approval.</p>
+            </div>
+          )}
+          {empPriorAllotments.length > 0 && !atChangeLimit && (
+            <p className="text-[11px] text-slate-400 px-1">
+              Employee has <strong>{empPriorAllotments.length}</strong> prior allotment record{empPriorAllotments.length !== 1 ? 's' : ''} · <strong>{changeCount}</strong> change{changeCount !== 1 ? 's' : ''} used of 2 allowed.
+            </p>
+          )}
+
           <div>
             <label className="label">Remarks</label>
             <input className="input" placeholder="Optional" value={form.remarks} onChange={f('remarks')} />
@@ -362,7 +403,13 @@ export default function AllotmentsPage() {
             <FieldRow label="Name"        value={selected.emp?.Name || selected.Emp_ID} />
             <FieldRow label="Designation" value={selected.emp?.Designation} />
             <FieldRow label="Department"  value={selected.emp?.Department} />
-            <FieldRow label="Category"    value={selected.emp?.Category} last />
+            <FieldRow label="Category"    value={selected.emp?.Category} />
+            {selected.emp?.Grade_Level && (
+              <FieldRow label="Grade"
+                value={`${selected.emp.Grade_Level}${getEntitledGroup(selected.emp.Grade_Level) ? ' (Entitled: Type ' + getEntitledGroup(selected.emp.Grade_Level) + ')' : ''}`}
+                last />
+            )}
+            {!selected.emp?.Grade_Level && <FieldRow label="Grade" value="—" last />}
           </ModalSection>
           <ModalSection title="Allotment Details">
             <FieldRow label="Date"        value={selected.Allotment_Date} />
@@ -383,17 +430,38 @@ export default function AllotmentsPage() {
         <div className="space-y-3">
           <div><label className="label">Full Name *</label><input className="input" value={empForm.name} onChange={ef('name')} /></div>
           <div><label className="label">Designation *</label><input className="input" value={empForm.designation} onChange={ef('designation')} /></div>
-          <div>
-            <label className="label">Department</label>
-            <select className="input" value={empForm.department} onChange={ef('department')}>
-              {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Department</label>
+              <select className="input" value={empForm.department} onChange={ef('department')}>
+                {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Category</label>
+              <select className="input" value={empForm.category} onChange={ef('category')}>
+                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="label">Category</label>
-            <select className="input" value={empForm.category} onChange={ef('category')}>
-              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Grade Level</label>
+              <select className="input" value={empForm.grade_level} onChange={ef('grade_level')}>
+                <option value="">Select grade</option>
+                {EMPLOYEE_LEVELS.map(l => <option key={l}>{l}</option>)}
+              </select>
+              {empForm.grade_level && getEntitledGroup(empForm.grade_level) && (
+                <p className="text-[11px] text-brand-600 mt-1">
+                  Entitled: Type <strong>{getEntitledGroup(empForm.grade_level)}</strong>
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="label">Seniority Date</label>
+              <input className="input" type="date" value={empForm.seniority_date} onChange={ef('seniority_date')} />
+              <p className="text-[11px] text-slate-400 mt-1">Date of entry in current grade</p>
+            </div>
           </div>
         </div>
       </Modal>

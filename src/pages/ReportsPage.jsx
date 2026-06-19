@@ -332,11 +332,10 @@ function NewOrderForm({ quarters, employees, orders, allotments, auditUser, onCr
   const [mode,     setMode]     = useState('New Allotment')
 
   const yr = new Date().getFullYear()
-  const fy = `${yr}-${String(yr+1).slice(2)}`
-  const defOrderNo = `SJVN/NJHPS/QTR/${fy}/${String((orders?.length || 0) + 1).padStart(3,'0')}`
+  const defOrderNo = `Qtr. Allotment Order-${(orders?.length || 0) + 1}`
 
   const [form, setForm] = useState({
-    order_no: defOrderNo,
+    order_no:  defOrderNo,
     effective_date: todayStr(),
     category: 'SJVN Employee',
     mode: 'New Allotment',
@@ -783,53 +782,84 @@ function generateOrderPage(o, orderNo, date) {
   const qtr = o.qtr || {}
   const isAgency = o.Allottee_Category === 'Outside Agency' || o.Allottee_Category === 'Apprentice / Trainee'
   const allotteeName = isAgency ? (o.Entity_Name || '—') : (emp.Name || o.Emp_ID || '—')
+  const empNo        = isAgency ? '—' : (o.Emp_ID || '—')
   const designation  = isAgency ? (o.Entity_Type || o.Allottee_Category || '—') : (emp.Designation || '—')
-  const department   = isAgency ? (o.SJVN_Unit || o.Allottee_Category || '—') : (emp.Department || '—')
+  const department   = isAgency ? (o.SJVN_Unit || 'NJHPS') : (emp.Department || 'NJHPS')
+  const qtrTypeNo    = qtr.Type ? `${qtr.Type}, ${qtr.Quarter_No || o.Quarter_ID}` : (qtr.Quarter_No || o.Quarter_ID || '—')
+  const remarkCol    = o.Allotment_Mode || 'Allotment'
+  const fileRef      = `Cr.0/SJVN/NJHPS/(Admn &amp; HR)/T-04/${fy}`
 
   return `<div class="page">
   <div class="hd">
-    <h1>SJVN LIMITED (A Govt. of India Enterprise)</h1>
-    <h2>${UNIT_FULL} (${UNIT})</h2>
+    <h1>SJVN LIMITED</h1>
+    <p style="font-size:10px;margin-top:1px">(Mini Ratna Category-I &amp; Schedule 'A' CPSE, A Govt. of India Enterprise)</p>
+    <h2 style="margin-top:4px">${UNIT_FULL} (${UNIT})</h2>
     <p>${UNIT_ADDR}</p>
   </div>
+
   <div class="meta">
-    <div><b>No.:</b> ${orderNo || '___'}</div>
+    <div><b>${fileRef}</b></div>
     <div><b>Date:</b> ${fmtDate(date)}</div>
   </div>
-  <div class="title-line">ALLOTMENT ORDER</div>
-  <p style="margin-bottom:14px;font-size:11px;text-align:justify;line-height:1.8">
-    Subject to the terms and conditions of SJVN Ltd. Quarters Allotment Rules, the residential
-    accommodation detailed below is allotted to the allottee mentioned hereunder:
+
+  <div class="title-line">${orderNo || 'Quarter Allotment Order'}</div>
+
+  <p style="margin-bottom:12px;font-size:11px;line-height:1.8">
+    The following accommodation is allotted to the employee(s) mentioned below, subject to the
+    terms &amp; conditions of SJVN Residential Quarters Allotment Rules in force:
   </p>
+
   <table style="margin-bottom:16px">
-    <tr><td class="section-hd" colspan="2">QUARTER DETAILS</td></tr>
-    <tr><td style="width:35%">Quarter No.</td><td>${qtr.Quarter_No || o.Quarter_ID || '—'}</td></tr>
-    <tr><td>Type</td><td>${qtr.Type || '—'}</td></tr>
-    <tr><td>Location / Block</td><td>${qtr.Location || '—'}${qtr.Block?' / Block '+qtr.Block:''}</td></tr>
-    <tr><td class="section-hd" colspan="2">ALLOTTEE DETAILS</td></tr>
-    <tr><td>Name</td><td><b>${allotteeName}</b></td></tr>
-    <tr><td>Designation / Type</td><td>${designation}</td></tr>
-    <tr><td>Department / Unit</td><td>${department}</td></tr>
-    ${!isAgency && emp.Category ? `<tr><td>Category</td><td>${emp.Category}</td></tr>` : ''}
-    <tr><td class="section-hd" colspan="2">ALLOTMENT DETAILS</td></tr>
-    <tr><td>Allotment Mode</td><td>${o.Allotment_Mode || 'New Allotment'}</td></tr>
-    <tr><td>Effective Date</td><td>${fmtDate(o.Effective_Date)}</td></tr>
-    <tr><td>Monthly Rent</td><td>₹ ${o.Rent || 'As per prevailing SJVN rules'}</td></tr>
-    ${o.Remarks ? `<tr><td>Remarks</td><td>${o.Remarks}</td></tr>` : ''}
+    <thead>
+      <tr style="background:#eee">
+        <th style="width:5%;text-align:center">Sr.<br/>No.</th>
+        <th style="width:10%">Emp. No.</th>
+        <th style="width:28%">Name &amp; Designation<br/><span style="font-weight:normal;font-size:10px">(Sh./Smt.)</span></th>
+        <th style="width:15%">Project<br/>Name</th>
+        <th style="width:22%">Type &amp; Qtr. No.</th>
+        <th style="width:20%">Remarks</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="text-align:center">1</td>
+        <td>${empNo}</td>
+        <td><b>${allotteeName}</b><br/><span style="font-size:10px">${designation}</span></td>
+        <td>${department}</td>
+        <td>${qtrTypeNo}${qtr.Location ? '<br/><span style="font-size:10px">'+qtr.Location+(qtr.Block?', Block '+qtr.Block:'')+'</span>' : ''}</td>
+        <td>${remarkCol}${o.Remarks ? '<br/><span style="font-size:10px">'+o.Remarks+'</span>' : ''}</td>
+      </tr>
+    </tbody>
   </table>
-  <p style="font-weight:bold;margin-bottom:6px;font-size:11px">TERMS AND CONDITIONS:</p>
-  <ol>
-    <li>This allotment is purely temporary and is liable to be cancelled without prior notice at the discretion of the competent authority.</li>
-    <li>The allottee shall vacate the quarter immediately upon transfer, retirement, resignation, dismissal from service or on completion of the purpose for which the quarter was allotted.</li>
-    <li>Monthly house rent and other charges as prescribed shall be recovered from the salary / otherwise.</li>
-    <li>The allottee shall maintain the quarter in good and habitable condition and shall not carry out any structural alterations or additions without prior written permission of the competent authority.</li>
-    <li>Sub-letting, sharing or parting with possession of the quarter to any other person is strictly prohibited.</li>
-    <li>Any damage to fixtures, fittings or structure shall be charged to the allottee.</li>
-    <li>The allottee shall abide by all the rules and regulations of SJVN Ltd. and NJHPS governing allotment of residential quarters as amended from time to time.</li>
-  </ol>
+
+  <p style="font-size:11px;margin-bottom:4px"><b>Effective Date:</b> ${fmtDate(o.Effective_Date)} &nbsp;&nbsp; <b>Monthly Rent:</b> ₹ ${o.Rent || 'As per SJVN Rules'}</p>
+
+  <div style="border:1px solid #aaa;border-radius:4px;padding:8px 10px;margin:12px 0;font-size:10.5px;line-height:1.9;background:#fafafa">
+    <b>शर्तें एवं नियम (Terms &amp; Conditions):</b><br/>
+    1. यह आवंटन पूर्णतः अस्थायी है और अधिकृत प्राधिकारी के विवेक पर बिना पूर्व सूचना के रद्द किया जा सकता है।
+    इस आदेश की प्राप्ति से <b>10 दिनों</b> के भीतर आवास का कब्जा न लेने पर आवंटन स्वतः निरस्त हो जाएगा
+    और कर्मचारी <b>1 वर्ष</b> के लिए अपात्र हो जाएगा। (Rule 8.3)<br/>
+    2. वर्तमान आवास / कमरा तत्काल खाली करके Estate / Admin Section को सौंपें।<br/>
+    3. यह आवंटन HAC नियमों के अंतर्गत है। मासिक किराया एवं अन्य प्रभार वेतन से काटे जाएंगे।<br/>
+    4. आवास का उप-किराया, साझा उपयोग या किसी अन्य व्यक्ति को सौंपना सख्त वर्जित है। (Rule 8.10)<br/>
+    5. आवंटित आवास में किसी प्रकार का संरचनात्मक परिवर्तन प्रबंधन की पूर्व अनुमति के बिना नहीं किया जाएगा।
+  </div>
+
   <div class="sig">
     <div class="sig-block"><div class="line">Allottee's Signature &amp; Date</div></div>
-    <div class="sig-block"><div class="line"><b>Housing Officer / AO (Admin)</b><br/>NJHPS, Jhakri</div></div>
+    <div class="sig-block"><div class="line"><b>Secretary, House Allotment Committee</b><br/>SJVN Jhakri (NJHPS)</div></div>
+  </div>
+
+  <div style="margin-top:32px;font-size:10px;border-top:1px solid #ccc;padding-top:8px">
+    <b>Copy to:</b>
+    <ol style="margin:4px 0 0 0;padding-left:18px;line-height:1.8">
+      <li>HOD, Finance &amp; Accounts, NJHPS, Jhakri</li>
+      <li>HOD, Admin &amp; HR, NJHPS, Jhakri</li>
+      <li>HOD, THER, NJHPS, Jhakri</li>
+      <li>HOD, PSSM, NJHPS, Jhakri</li>
+      <li>Secretary, HAC, RHPS</li>
+      <li>Concerned Employee — ${allotteeName}${empNo !== '—' ? ' (Emp. No. '+empNo+')' : ''}</li>
+    </ol>
   </div>
 </div>`
 }
