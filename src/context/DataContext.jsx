@@ -35,7 +35,11 @@ export function DataProvider({ children }) {
       const allCoreFailed = coreResults.every(r => r.status === 'rejected')
       if (allCoreFailed) {
         const msg = results[0].reason?.message || ''
-        if (msg.includes('NOT_AUTHENTICATED')) {
+        if (msg.includes('SCRIPT_NOT_CONFIGURED')) {
+          setError('SCRIPT_NOT_CONFIGURED')
+        } else if (msg.includes('UNAUTHORIZED')) {
+          setError('SCRIPT_UNAUTHORIZED')
+        } else if (msg.includes('NOT_AUTHENTICATED')) {
           setError('SESSION_EXPIRED')
         } else if (msg.includes('403') || msg.includes('permission') || msg.includes('PERMISSION_DENIED') || msg.includes('not found')) {
           setError('ACCESS_DENIED')

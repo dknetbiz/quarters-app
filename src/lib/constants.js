@@ -2,10 +2,14 @@
 // CONFIGURATION
 // ============================================================
 export const CONFIG = {
-  GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_CLIENT_ID.apps.googleusercontent.com',
-  SPREADSHEET_ID:   import.meta.env.VITE_SPREADSHEET_ID   || 'YOUR_SPREADSHEET_ID',
-  API_KEY:          import.meta.env.VITE_API_KEY           || 'YOUR_API_KEY',
-  SCOPES: 'https://www.googleapis.com/auth/spreadsheets',
+  GOOGLE_CLIENT_ID:  import.meta.env.VITE_GOOGLE_CLIENT_ID  || 'YOUR_CLIENT_ID.apps.googleusercontent.com',
+  APPS_SCRIPT_URL:   import.meta.env.VITE_APPS_SCRIPT_URL   || '',
+  APPS_SCRIPT_KEY:   import.meta.env.VITE_APPS_SCRIPT_KEY   || '',
+  // Legacy — no longer used by the frontend (Sheet access is now via Apps Script)
+  SPREADSHEET_ID:    import.meta.env.VITE_SPREADSHEET_ID    || '',
+  API_KEY:           import.meta.env.VITE_API_KEY           || '',
+  // Scope: identity only — no direct Sheets access needed from the browser
+  SCOPES: 'https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid',
 }
 
 // ============================================================

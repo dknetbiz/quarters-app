@@ -1,96 +1,85 @@
-import { CONFIG, SHEETS, COLS } from './constants'
-import { getToken, silentRefresh } from './auth'
+import { CONFIG, SHEETS } from './constants'
 
-const BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
+// ─── Apps Script proxy helpers ────────────────────────────────
+// All Sheet operations go through the Google Apps Script web app
+// which runs as dknetbiz@gmail.com, so users never need direct
+// access to the spreadsheet.
 
-// ─── Core fetch wrapper ───────────────────────────────────────
-async function sheetsRequest(path, options = {}, _retry = false) {
-  let token = getToken()
-
-  if (!token) {
-    if (_retry) throw new Error('NOT_AUTHENTICATED')
-    // Token expired — attempt silent refresh before giving up
-    try {
-      token = await silentRefresh()
-    } catch {
-      throw new Error('NOT_AUTHENTICATED')
-    }
+async function scriptGet(params) {
+  if (!CONFIG.APPS_SCRIPT_URL) throw new Error('SCRIPT_NOT_CONFIGURED')
+  const url = new URL(CONFIG.APPS_SCRIPT_URL)
+  url.searchParams.set('secret', CONFIG.APPS_SCRIPT_KEY)
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null) url.searchParams.set(k, String(v))
   }
+  const res = await fetch(url.toString(), { redirect: 'follow' })
+  let data
+  try { data = await res.json() } catch { throw new Error('Apps Script returned invalid response') }
+  if (!data.ok) throw new Error(data.error || 'Apps Script error')
+  return data
+}
 
-  const url = `${BASE}/${CONFIG.SPREADSHEET_ID}${path}`
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...options.headers
-    }
+async function scriptPost(body) {
+  if (!CONFIG.APPS_SCRIPT_URL) throw new Error('SCRIPT_NOT_CONFIGURED')
+  // Use Content-Type: text/plain to avoid CORS preflight (simple request).
+  // Apps Script parses the body via e.postData.contents.
+  const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ ...body, secret: CONFIG.APPS_SCRIPT_KEY }),
   })
-
-  // Token rejected by Google — try once more after silent refresh
-  if (res.status === 401 && !_retry) {
-    try { await silentRefresh() } catch { throw new Error('NOT_AUTHENTICATED') }
-    return sheetsRequest(path, options, true)
-  }
-
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.error?.message || 'Sheets API error')
-  }
-  return res.json()
+  let data
+  try { data = await res.json() } catch { throw new Error('Apps Script returned invalid response') }
+  if (!data.ok) throw new Error(data.error || 'Apps Script error')
+  return data
 }
 
 // ─── READ: Get all rows from a sheet ─────────────────────────
 export async function getSheetData(sheetName) {
-  const data = await sheetsRequest(`/values/${sheetName}!A:Z`)
-  const rows = data.values || []
-  if (rows.length < 2) return []
-  const headers = rows[0]
-  return rows.slice(1).map((row, idx) => {
-    const obj = { _rowIndex: idx + 2 } // 1-indexed, +1 for header
-    headers.forEach((h, i) => { obj[h] = row[i] || '' })
+  const { values } = await scriptGet({ action: 'getData', sheet: sheetName })
+  if (!values || values.length < 2) return []
+  const headers = values[0]
+  return values.slice(1).map((row, idx) => {
+    const obj = { _rowIndex: idx + 2 }   // 1-indexed; +1 for header row
+    headers.forEach((h, i) => { obj[h] = (row[i] ?? '').toString() })
     return obj
   })
 }
 
 // ─── READ: Get raw values (no header mapping) ─────────────────
-export async function getRawValues(range) {
-  const data = await sheetsRequest(`/values/${range}`)
-  return data.values || []
+// rangeStr can be "SheetName!A1:A1" or just "SheetName"
+export async function getRawValues(rangeStr) {
+  const bang = rangeStr.indexOf('!')
+  if (bang === -1) {
+    const { values } = await scriptGet({ action: 'getRaw', sheet: rangeStr })
+    return values || []
+  }
+  const sheet = rangeStr.slice(0, bang)
+  const range = rangeStr.slice(bang + 1)
+  const { values } = await scriptGet({ action: 'getRaw', sheet, range })
+  return values || []
 }
 
-// ─── APPEND: Add a new row ────────────────────────────────────
+// ─── WRITE: Append a new row ──────────────────────────────────
 export async function appendRow(sheetName, values) {
-  return sheetsRequest(
-    `/values/${sheetName}!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: 'POST', body: JSON.stringify({ values: [values] }) }
-  )
+  return scriptPost({ action: 'append', sheet: sheetName, values })
 }
 
-// ─── UPDATE: Edit a specific row ─────────────────────────────
+// ─── WRITE: Update an existing row (1-based rowIndex) ────────
 export async function updateRow(sheetName, rowIndex, values) {
-  const colLetter = String.fromCharCode(64 + values.length)
-  return sheetsRequest(
-    `/values/${sheetName}!A${rowIndex}:${colLetter}${rowIndex}?valueInputOption=USER_ENTERED`,
-    { method: 'PUT', body: JSON.stringify({ values: [values] }) }
-  )
+  return scriptPost({ action: 'update', sheet: sheetName, rowIndex, values })
 }
 
-// ─── UPDATE: Single cell ──────────────────────────────────────
+// ─── WRITE: Update a single cell ─────────────────────────────
 export async function updateCell(sheetName, cell, value) {
-  return sheetsRequest(
-    `/values/${sheetName}!${cell}?valueInputOption=USER_ENTERED`,
-    { method: 'PUT', body: JSON.stringify({ values: [[value]] }) }
-  )
+  return scriptPost({ action: 'updateCell', sheet: sheetName, cell, value })
 }
 
-// ─── DELETE: Clear a row (marks as deleted, keeps audit trail) ─
-export async function clearRow(sheetName, rowIndex, colCount = 10) {
-  const colLetter = String.fromCharCode(64 + colCount)
-  return sheetsRequest(
-    `/values/${sheetName}!A${rowIndex}:${colLetter}${rowIndex}/clear`,
-    { method: 'POST' }
-  )
+// ─── WRITE: Bulk append (all rows in one request) ────────────
+export async function bulkAppend(sheetName, rows) {
+  if (!rows.length) return
+  return scriptPost({ action: 'batchAppend', sheet: sheetName, rows })
 }
 
 // ─── AUDIT: Write audit log entry ────────────────────────────
@@ -104,45 +93,12 @@ export async function writeAuditLog({ userEmail, userName, action, module, recor
   ])
 }
 
-// ─── MIGRATE MISSING COLUMN HEADERS (for existing sheets) ────
-// Safe to run on any sheet: reads existing headers, only appends what's missing.
-export async function migrateSheetHeaders() {
-  const required = {
-    [SHEETS.EMPLOYEES]: ['Grade_Level', 'Seniority_Date', 'Emp_No'],
-  }
-  for (const [sheet, cols] of Object.entries(required)) {
-    try {
-      const data = await getRawValues(`${sheet}!1:1`)
-      const existing = (data[0] || []).map(h => (h || '').trim())
-      let pos = existing.length
-      for (const col of cols) {
-        if (!existing.includes(col)) {
-          const letter = String.fromCharCode(65 + pos)   // A=65
-          await updateCell(sheet, `${letter}1`, col)
-          existing.push(col)
-          pos++
-        }
-      }
-    } catch (e) {
-      console.warn(`Header migration skipped for ${sheet}:`, e.message)
-    }
-  }
-}
-
 // ─── GENERATE ID ──────────────────────────────────────────────
 export function generateId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
 }
 
-// ─── CREATE MISSING SHEET TAB ─────────────────────────────────
-async function createSheetTab(title) {
-  await sheetsRequest(':batchUpdate', {
-    method: 'POST',
-    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] })
-  })
-}
-
-// ─── INITIALIZE SHEET HEADERS ────────────────────────────────
+// ─── INITIALIZE SHEET HEADERS (new setup) ────────────────────
 export async function initializeSheetHeaders() {
   const headers = {
     [SHEETS.QUARTERS]:     ['Quarter_ID','Quarter_No','Type','Block','Location','Status','Remarks'],
@@ -156,28 +112,41 @@ export async function initializeSheetHeaders() {
 
   for (const [sheet, cols] of Object.entries(headers)) {
     try {
-      const existing = await getRawValues(`${sheet}!A1:A1`)
-      if (!existing.length) {
-        await sheetsRequest(
-          `/values/${sheet}!A1:${String.fromCharCode(64 + cols.length)}1?valueInputOption=RAW`,
-          { method: 'PUT', body: JSON.stringify({ values: [cols] }) }
-        )
+      // getRaw returns [] for an empty/missing sheet; returns [['header',...]] if headers exist
+      const { values } = await scriptGet({ action: 'getRaw', sheet, range: 'A1:A1' })
+      const firstCell = (values?.[0]?.[0] ?? '').toString().trim()
+      if (!firstCell) {
+        await scriptPost({ action: 'writeHeaders', sheet, values: cols })
       }
     } catch (e) {
-      // Sheet tab doesn't exist — create it then write headers
-      if (e.message?.includes('Unable to parse range') || e.message?.includes('not found')) {
-        try {
-          await createSheetTab(sheet)
-          await sheetsRequest(
-            `/values/${sheet}!A1:${String.fromCharCode(64 + cols.length)}1?valueInputOption=RAW`,
-            { method: 'PUT', body: JSON.stringify({ values: [cols] }) }
-          )
-          console.log(`Created sheet tab: ${sheet}`)
-        } catch (e2) {
-          console.warn(`Could not create sheet ${sheet}:`, e2.message)
+      // If the script itself isn't configured yet, stop silently
+      if (e.message === 'SCRIPT_NOT_CONFIGURED') return
+      console.warn(`Could not init headers for ${sheet}:`, e.message)
+    }
+  }
+}
+
+// ─── MIGRATE MISSING COLUMN HEADERS (existing sheets) ────────
+export async function migrateSheetHeaders() {
+  const required = {
+    [SHEETS.EMPLOYEES]: ['Grade_Level', 'Seniority_Date', 'Emp_No'],
+  }
+  for (const [sheet, cols] of Object.entries(required)) {
+    try {
+      const raw = await getRawValues(`${sheet}!1:1`)
+      const existing = (raw[0] || []).map(h => (h ?? '').toString().trim())
+      let pos = existing.length
+      for (const col of cols) {
+        if (!existing.includes(col)) {
+          const letter = String.fromCharCode(65 + pos)
+          await updateCell(sheet, `${letter}1`, col)
+          existing.push(col)
+          pos++
         }
-      } else {
-        console.warn(`Could not init headers for ${sheet}:`, e.message)
+      }
+    } catch (e) {
+      if (e.message !== 'SCRIPT_NOT_CONFIGURED') {
+        console.warn(`Header migration skipped for ${sheet}:`, e.message)
       }
     }
   }
@@ -237,7 +206,6 @@ export async function createAllotment(data, user) {
     data.rent, '', 'Active', data.remarks || ''
   ]
   await appendRow(SHEETS.ALLOTMENTS, row)
-  // Update quarter status to Occupied
   const quarters = await getAllQuarters()
   const q = quarters.find(q => q.Quarter_ID === data.quarter_id)
   if (q) await updateQuarter(q._rowIndex, { ...q, Status: 'Occupied' }, q, user)
@@ -245,7 +213,6 @@ export async function createAllotment(data, user) {
   return id
 }
 
-/** Create a historical (already-vacated) allotment record — does NOT touch quarter status */
 export async function createHistoricalAllotment(data, user) {
   const id = generateId('ALT')
   const row = [
@@ -258,15 +225,6 @@ export async function createHistoricalAllotment(data, user) {
   return id
 }
 
-/** Append multiple rows in a single API call (for bulk upload) */
-export async function bulkAppend(sheetName, rows) {
-  if (!rows.length) return
-  return sheetsRequest(
-    `/values/${encodeURIComponent(sheetName + '!A1')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: 'POST', body: JSON.stringify({ values: rows }) }
-  )
-}
-
 export async function vacateAllotment(allotment, vacatedDate, user) {
   const row = [
     allotment.Allotment_ID, allotment.Quarter_ID, allotment.Emp_ID,
@@ -274,7 +232,6 @@ export async function vacateAllotment(allotment, vacatedDate, user) {
     allotment.Rent, vacatedDate, 'Vacated', allotment.Remarks || ''
   ]
   await updateRow(SHEETS.ALLOTMENTS, allotment._rowIndex, row)
-  // Update quarter status to Vacant
   const quarters = await getAllQuarters()
   const q = quarters.find(q => q.Quarter_ID === allotment.Quarter_ID)
   if (q) await updateQuarter(q._rowIndex, { ...q, Status: 'Vacant' }, q, user)
@@ -318,14 +275,13 @@ export async function addRentEntry(data, user) {
 }
 
 // ─── DRAFT ORDERS HELPERS ─────────────────────────────────────
-
 export async function getAllOrders() {
   try { return await getSheetData(SHEETS.ORDERS) } catch { return [] }
 }
 
 export async function createDraftOrder(data, user) {
-  const id       = generateId('ORD')
-  const today    = new Date().toISOString().split('T')[0]
+  const id    = generateId('ORD')
+  const today = new Date().toISOString().split('T')[0]
   const row = [
     id, data.order_no, today, data.effective_date || today,
     data.category || '', data.mode || 'New Allotment',
@@ -342,7 +298,6 @@ export async function createDraftOrder(data, user) {
 export async function issueOrder(order, currentAllotments, user) {
   let empId = order.Emp_ID
 
-  // For agency / trainee: ensure an employee record exists so allotment links work
   if (!empId && order.Entity_Name) {
     const deptMap = { 'Apprentice / Trainee': 'Trainees', 'Outside Agency': 'External Agency' }
     empId = await addEmployee({
@@ -353,15 +308,11 @@ export async function issueOrder(order, currentAllotments, user) {
     }, user)
   }
 
-  // For Change / Renewal: vacate old allotment first
-  if (['Change','Renewal'].includes(order.Allotment_Mode) && order.Old_Quarter_ID) {
+  if (['Change', 'Renewal'].includes(order.Allotment_Mode) && order.Old_Quarter_ID) {
     const oldAlt = currentAllotments.find(a => a.Quarter_ID === order.Old_Quarter_ID && a.Status === 'Active')
-    if (oldAlt) {
-      await vacateAllotment(oldAlt, order.Effective_Date || new Date().toISOString().split('T')[0], user)
-    }
+    if (oldAlt) await vacateAllotment(oldAlt, order.Effective_Date || new Date().toISOString().split('T')[0], user)
   }
 
-  // Create allotment (also marks quarter Occupied)
   const altId = await createAllotment({
     quarter_id:     order.Quarter_ID,
     emp_id:         empId || '',
@@ -371,7 +322,6 @@ export async function issueOrder(order, currentAllotments, user) {
     remarks:        `Order: ${order.Order_No}. ${order.Remarks || ''}`.trim(),
   }, user)
 
-  // Update order row status → Issued
   const issuedDate = new Date().toISOString().split('T')[0]
   await updateRow(SHEETS.ORDERS, order._rowIndex, buildOrderRow({ ...order, Status: 'Issued', Issued_Date: issuedDate, Rejected_Date: '', Rejected_Reason: '' }))
   await writeAuditLog({ ...user, action: 'ISSUE_ORDER', module: 'Orders', recordId: order.Order_ID, newValue: { issuedDate, altId } })

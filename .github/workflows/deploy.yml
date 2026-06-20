@@ -36,9 +36,12 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-          VITE_SPREADSHEET_ID:   ${{ secrets.VITE_SPREADSHEET_ID }}
-          VITE_API_KEY:          ${{ secrets.VITE_API_KEY }}
+          VITE_GOOGLE_CLIENT_ID:  ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_APPS_SCRIPT_URL:   ${{ secrets.VITE_APPS_SCRIPT_URL }}
+          VITE_APPS_SCRIPT_KEY:   ${{ secrets.VITE_APPS_SCRIPT_KEY }}
+          # Legacy — kept for backward compatibility; no longer used at runtime
+          VITE_SPREADSHEET_ID:    ${{ secrets.VITE_SPREADSHEET_ID }}
+          VITE_API_KEY:           ${{ secrets.VITE_API_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
